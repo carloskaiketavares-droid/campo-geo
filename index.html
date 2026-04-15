@@ -194,6 +194,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
           <div class="row"><span class="rk">Fotos na fila</span><span class="rv" id="env-n">0</span></div>
         </div>
         <button id="send-btn" class="send-btn" onclick="sendBatch()" disabled>✅ ENVIAR LOTE AO DRIVE</button>
+        <button style="width:100%;padding:10px;border-radius:8px;border:1px solid #3b82f6;background:transparent;color:#3b82f6;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--mono);margin-top:6px" onclick="scanDrivePhotos()">🔍 ESCANEAR DRIVE (reconstruir índice)</button>
         <button style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--red);background:transparent;color:var(--red);font-size:11px;font-weight:600;cursor:pointer;font-family:var(--mono);margin-top:6px" onclick="resetProject()">🗑️ RESETAR CACHE LOCAL (limpar pontos fantasma)</button>
         <div>
           <div class="sec">Log de Operações</div>
@@ -726,6 +727,144 @@ function switchTab(tab) {
 function saveGeoKey() {
   var v = document.getElementById("geo-key").value.trim();
   if (v) { localStorage.setItem("geocodeKey", v); log("Chave salva.", "ok"); }
+}
+
+async function apiList(path) {
+  var url = API_URL + "?action=list&path=" + encodeURIComponent(path);
+  var r = await fetch(url, { redirect: "follow" });
+  return r.json();
+}
+
+async function apiRead(path, fileName) {
+  var url = API_URL + "?action=read&path=" + encodeURIComponent(path) + "&fileName=" + encodeURIComponent(fileName);
+  var r = await fetch(url, { redirect: "follow" });
+  return r.json();
+}
+
+async function scanDrivePhotos() {
+  if (!S.project) { alert("Selecione um projeto primeiro."); return; }
+  if (!confirm("🔍 Escanear todas as pastas do Drive e reconstruir o índice?\n\nIsso pode levar alguns minutos.")) return;
+
+  // Pausar auto-sync
+  if (S.syncTimer) { clearInterval(S.syncTimer); S.syncTimer = null; }
+
+  var basePath = "04_PROJETOS/" + S.project.folder + "/cadernos_campo";
+  var recoveredPts = [];
+  var totalFiles = 0;
+  var errors = 0;
+
+  log("🔍 Iniciando varredura do Drive...", "info");
+  log("📂 Base: " + basePath, "info");
+
+  try {
+    // 1. Listar bairros
+    var bairros = await apiList(basePath);
+    if (!bairros.success) { log("❌ Erro ao listar bairros: " + JSON.stringify(bairros), "err"); startAutoSync(); return; }
+    var bairroFolders = (bairros.folders || []).filter(function(f) { return f !== "." && f !== ".."; });
+    log("📂 Bairros encontrados: " + bairroFolders.length + " → " + bairroFolders.join(", "), "ok");
+
+    for (var bi = 0; bi < bairroFolders.length; bi++) {
+      var bairro = bairroFolders[bi];
+      var bairroPath = basePath + "/" + bairro;
+
+      // 2. Listar ruas dentro do bairro
+      var ruas;
+      try { ruas = await apiList(bairroPath); } catch(e) { log("⚠️ " + bairro + ": " + e.message, "err"); errors++; continue; }
+      if (!ruas.success) { continue; }
+
+      var ruaFolders = (ruas.folders || []).filter(function(f) { return f !== "." && f !== ".."; });
+      var ruaFiles = (ruas.files || []).filter(function(f) { return f.endsWith(".json") && f !== "pontos_enviados.json"; });
+
+      // Arquivos direto no bairro (sem subpasta de rua)
+      for (var fi = 0; fi < ruaFiles.length; fi++) {
+        try {
+          var data = await apiRead(bairroPath, ruaFiles[fi]);
+          if (data.success && data.content) {
+            var photo = JSON.parse(data.content);
+            recoveredPts.push({
+              id: photo.id || ruaFiles[fi].replace(".json", ""),
+              name: photo.name || ruaFiles[fi],
+              lat: photo.lat, lng: photo.lng, acc: photo.acc,
+              timestamp: photo.timestamp,
+              address: photo.address || { bairro: bairro, rua: "Sem_rua" },
+              operator: photo.operator || "desconhecido"
+            });
+            totalFiles++;
+          }
+        } catch(e) { errors++; }
+      }
+
+      // 3. Entrar em cada rua
+      for (var ri = 0; ri < ruaFolders.length; ri++) {
+        var rua = ruaFolders[ri];
+        var ruaPath = bairroPath + "/" + rua;
+
+        var files;
+        try { files = await apiList(ruaPath); } catch(e) { errors++; continue; }
+        if (!files.success) continue;
+
+        var jsonFiles = (files.files || []).filter(function(f) { return f.endsWith(".json"); });
+        log("  📂 " + bairro + "/" + rua + ": " + jsonFiles.length + " foto(s)", "info");
+
+        // 4. Ler cada arquivo JSON
+        for (var ji = 0; ji < jsonFiles.length; ji++) {
+          try {
+            var fData = await apiRead(ruaPath, jsonFiles[ji]);
+            if (fData.success && fData.content) {
+              var p = JSON.parse(fData.content);
+              recoveredPts.push({
+                id: p.id || jsonFiles[ji].replace(".json", ""),
+                name: p.name || jsonFiles[ji],
+                lat: p.lat, lng: p.lng, acc: p.acc,
+                timestamp: p.timestamp,
+                address: p.address || { bairro: bairro, rua: rua },
+                operator: p.operator || "desconhecido"
+              });
+              totalFiles++;
+              if (totalFiles % 10 === 0) log("  ... " + totalFiles + " fotos lidas", "info");
+            }
+          } catch(e) { errors++; }
+        }
+      }
+    }
+
+    log("📊 Varredura concluída: " + totalFiles + " fotos recuperadas" + (errors > 0 ? ", " + errors + " erros" : ""), "ok");
+
+    if (totalFiles === 0) {
+      log("⚠️ Nenhuma foto encontrada nas pastas.", "err");
+      startAutoSync();
+      return;
+    }
+
+    // 5. Salvar pontos_enviados.json reconstruído
+    log("💾 Salvando pontos_enviados.json com " + recoveredPts.length + " pontos...", "info");
+    var saveRes = await apiWrite(basePath, "pontos_enviados.json", JSON.stringify(recoveredPts, null, 2));
+    if (saveRes.success) {
+      log("✅ Índice reconstruído: " + recoveredPts.length + " pontos!", "ok");
+    } else {
+      log("❌ Erro ao salvar índice: " + JSON.stringify(saveRes), "err");
+    }
+
+    // 6. Atualizar estado local
+    S.sentPts = recoveredPts;
+    saveSentLocal();
+
+    // Limpar marcadores antigos e recriar
+    for (var id in ML.sent) { if (S.map) S.map.removeLayer(ML.sent[id]); }
+    ML.sent = {};
+    recoveredPts.forEach(function(pt) {
+      if (pt.lat != null && pt.lng != null) addMarker(pt, "sent");
+    });
+    updateStats();
+
+    log("🗺️ " + recoveredPts.length + " pontos restaurados no mapa!", "ok");
+
+  } catch(e) {
+    log("❌ Erro na varredura: " + e.message, "err");
+  }
+
+  // Reativar auto-sync
+  startAutoSync();
 }
 
 async function resetProject() {
