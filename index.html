@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#0a0e1a">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
-<title>Campo GEO v4.0</title>
+<title>Campo GEO v4.1</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
@@ -111,7 +111,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 <div id="setup">
   <div class="s-logo"><img src="logo.svg" alt="Brasil Limpo"></div>
   <div class="s-title">CAMPO GEO</div>
-  <div class="s-sub">Levantamento Fotográfico Georreferenciado · v4.0</div>
+  <div class="s-sub">Levantamento Fotográfico Georreferenciado · v4.1</div>
   <div class="s-card">
     <div class="s-label">Operador</div>
     <input id="op-input" class="s-input" type="text" placeholder="Nome do operador" autocomplete="name">
@@ -126,7 +126,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
     <div class="hd-left">
       <div class="hd-logo"><img src="logo.svg" alt="BL"></div>
       <div>
-        <div class="hd-title">CAMPO GEO <span style="font-size:9px;color:var(--muted)">v4.0</span></div>
+        <div class="hd-title">CAMPO GEO <span style="font-size:9px;color:var(--muted)">v4.1</span></div>
         <div class="hd-sub" id="hd-sub">—</div>
       </div>
     </div>
@@ -194,10 +194,11 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
           <div class="row"><span class="rk">Fotos na fila</span><span class="rv" id="env-n">0</span></div>
         </div>
         <button id="send-btn" class="send-btn" onclick="sendBatch()" disabled>✅ ENVIAR LOTE AO DRIVE</button>
+        <button style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--red);background:transparent;color:var(--red);font-size:11px;font-weight:600;cursor:pointer;font-family:var(--mono);margin-top:6px" onclick="resetProject()">🗑️ RESETAR CACHE LOCAL (limpar pontos fantasma)</button>
         <div>
           <div class="sec">Log de Operações</div>
           <div id="terminal" class="terminal">
-            <div class="log-info"><span class="log-ts">[SISTEMA]</span> Campo GEO v4.0 pronto.</div>
+            <div class="log-info"><span class="log-ts">[SISTEMA]</span> Campo GEO v4.1 pronto.</div>
           </div>
         </div>
       </div>
@@ -207,7 +208,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 
 <script>
 // ════════════════════════════════════════════════════════════
-//  CAMPO GEO v4.0
+//  CAMPO GEO v4.1
 //  CORREÇÕES:
 //  1. Compressão de imagem via Canvas (max 800px, quality 0.5)
 //  2. Metadados salvos separados da imagem
@@ -725,6 +726,20 @@ function switchTab(tab) {
 function saveGeoKey() {
   var v = document.getElementById("geo-key").value.trim();
   if (v) { localStorage.setItem("geocodeKey", v); log("Chave salva.", "ok"); }
+}
+
+function resetProject() {
+  if (!confirm("⚠️ Isso vai limpar TODOS os pontos do cache local.\nPontos reais no Drive NÃO serão afetados.\n\nContinuar?")) return;
+  var k = lsKey();
+  if (k) localStorage.removeItem(k);
+  // Limpar marcadores do mapa
+  for (var id in ML.sent) { if (S.map) S.map.removeLayer(ML.sent[id]); }
+  ML.sent = {};
+  S.sentPts = [];
+  updateStats();
+  log("🗑️ Cache local resetado. Use 🔄 Sincronizar para recarregar do Drive.", "ok");
+  // Tentar carregar do Drive imediatamente
+  loadSynced();
 }
 
 // ── SETUP ────────────────────────────────────
