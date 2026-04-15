@@ -772,18 +772,26 @@ async function scanDrivePhotos() {
       try { ruas = await apiList(bairroPath); } catch(e) { log("⚠️ " + bairro + ": " + e.message, "err"); errors++; continue; }
       if (!ruas.success) { continue; }
 
-      var ruaFolders = (ruas.folders || []).filter(function(f) { return f !== "." && f !== ".."; });
-      var ruaFiles = (ruas.files || []).filter(function(f) { return f.endsWith(".json") && f !== "pontos_enviados.json"; });
+      var ruaFolders = (ruas.folders || []).filter(function(f) { return f && f !== "." && f !== ".."; });
+      var rawFiles = ruas.files || [];
+      // Debug: mostrar formato dos arquivos retornados
+      if (bi === 0 && rawFiles.length > 0) log("🔧 Formato files: " + JSON.stringify(rawFiles[0]).substring(0, 100), "info");
+      var ruaFiles = rawFiles.filter(function(f) { 
+        var name = typeof f === "string" ? f : (f && (f.name || f.title || ""));
+        return name && name.indexOf(".json") !== -1 && name !== "pontos_enviados.json"; 
+      });
 
       // Arquivos direto no bairro (sem subpasta de rua)
       for (var fi = 0; fi < ruaFiles.length; fi++) {
         try {
-          var data = await apiRead(bairroPath, ruaFiles[fi]);
+          var fname = typeof ruaFiles[fi] === "object" ? (ruaFiles[fi].name || ruaFiles[fi].title || String(ruaFiles[fi])) : String(ruaFiles[fi]);
+          if (fname.indexOf(".json") === -1 || fname === "pontos_enviados.json") continue;
+          var data = await apiRead(bairroPath, fname);
           if (data.success && data.content) {
             var photo = JSON.parse(data.content);
             recoveredPts.push({
-              id: photo.id || ruaFiles[fi].replace(".json", ""),
-              name: photo.name || ruaFiles[fi],
+              id: photo.id || fname.replace(".json", ""),
+              name: photo.name || fname,
               lat: photo.lat, lng: photo.lng, acc: photo.acc,
               timestamp: photo.timestamp,
               address: photo.address || { bairro: bairro, rua: "Sem_rua" },
@@ -803,18 +811,23 @@ async function scanDrivePhotos() {
         try { files = await apiList(ruaPath); } catch(e) { errors++; continue; }
         if (!files.success) continue;
 
-        var jsonFiles = (files.files || []).filter(function(f) { return f.endsWith(".json"); });
+        var jsonFiles = (files.files || []).filter(function(f) { return f && typeof f === "string" && f.indexOf(".json") !== -1; });
+        if (typeof jsonFiles[0] === "object") {
+          jsonFiles = jsonFiles.map(function(f) { return f.name || f.title || String(f); });
+        }
         log("  📂 " + bairro + "/" + rua + ": " + jsonFiles.length + " foto(s)", "info");
 
         // 4. Ler cada arquivo JSON
         for (var ji = 0; ji < jsonFiles.length; ji++) {
+          var jname = typeof jsonFiles[ji] === "object" ? (jsonFiles[ji].name || String(jsonFiles[ji])) : String(jsonFiles[ji]);
+          if (jname.indexOf(".json") === -1) continue;
           try {
-            var fData = await apiRead(ruaPath, jsonFiles[ji]);
+            var fData = await apiRead(ruaPath, jname);
             if (fData.success && fData.content) {
               var p = JSON.parse(fData.content);
               recoveredPts.push({
-                id: p.id || jsonFiles[ji].replace(".json", ""),
-                name: p.name || jsonFiles[ji],
+                id: p.id || jname.replace(".json", ""),
+                name: p.name || jname,
                 lat: p.lat, lng: p.lng, acc: p.acc,
                 timestamp: p.timestamp,
                 address: p.address || { bairro: bairro, rua: rua },
