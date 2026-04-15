@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Campo GEO v4.0 — Teste E2E</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0a0e1a;color:#c8d6e5;font-family:'Courier New',monospace;padding:20px}
+h1{font-size:18px;color:#f59e0b;margin-bottom:16px}
+.test{background:#111827;border:1px solid #1e2a4a;border-radius:8px;padding:12px;margin-bottom:8px}
+.test-name{font-size:13px;font-weight:bold;margin-bottom:6px}
+.test-status{font-size:11px;padding:3px 8px;border-radius:4px;display:inline-block;margin-right:6px}
+.pass{background:#064e3b;color:#6ee7b7}
+.fail{background:#7f1d1d;color:#fca5a5}
+.running{background:#78350f;color:#fbbf24}
+.skip{background:#1e2a4a;color:#94a3b8}
+.detail{font-size:10px;color:#4a5e80;margin-top:4px;white-space:pre-wrap;max-height:100px;overflow-y:auto}
+.summary{margin-top:16px;padding:12px;background:#111827;border:1px solid #1e2a4a;border-radius:8px;font-size:14px}
+button{padding:12px 24px;background:linear-gradient(135deg,#1e40af,#3b82f6);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:bold;cursor:pointer;margin-bottom:16px}
+button:disabled{background:#374151;cursor:not-allowed}
+button:active{opacity:0.85}
+</style>
+</head>
+<body>
+<h1>🧪 Campo GEO v4.0 — Teste End-to-End</h1>
+<button id="run-btn" onclick="runAllTests()">▶️ EXECUTAR TODOS OS TESTES</button>
+<div id="results"></div>
+<div id="summary"></div>
+
+<script>
+var API_URL = "https://script.google.com/macros/s/AKfycbx8BehYWILdRbQi8mCv4ImGQz1gmD3I7DFESABkaiT-goB1-b-dcDL1IuqjxlDu56QM/exec";
+var TEST_PROJECT = "RIO_DAS_OSTRAS_RJ";
+var TEST_PATH = "04_PROJETOS/" + TEST_PROJECT + "/cadernos_campo";
+var results = [];
+
+function addResult(name, status, detail) {
+  results.push({ name: name, status: status, detail: detail || "" });
+  renderResults();
+}
+
+function updateResult(idx, status, detail) {
+  results[idx].status = status;
+  results[idx].detail = detail || "";
+  renderResults();
+}
+
+function renderResults() {
+  var html = results.map(function(r, i) {
+    var cls = r.status === "pass" ? "pass" : r.status === "fail" ? "fail" : r.status === "running" ? "running" : "skip";
+    var icon = r.status === "pass" ? "✅" : r.status === "fail" ? "❌" : r.status === "running" ? "⏳" : "⏸️";
+    return '<div class="test"><div class="test-name">' + icon + ' ' + r.name + ' <span class="test-status ' + cls + '">' + r.status.toUpperCase() + '</span></div>' + (r.detail ? '<div class="detail">' + r.detail + '</div>' : '') + '</div>';
+  }).join("");
+  document.getElementById("results").innerHTML = html;
+
+  var total = results.length;
+  var passed = results.filter(function(r){ return r.status === "pass"; }).length;
+  var failed = results.filter(function(r){ return r.status === "fail"; }).length;
+  var running = results.filter(function(r){ return r.status === "running"; }).length;
+  if (running === 0 && total > 0) {
+    document.getElementById("summary").innerHTML = '<div class="summary">' + (failed === 0 ? '🎉' : '⚠️') + ' Resultado: ' + passed + '/' + total + ' passaram | ' + failed + ' falharam</div>';
+  }
+}
+
+async function apiWrite(path, fileName, content) {
+  var r = await fetch(API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain" },
+    body: JSON.stringify({ action: "write", path: path, fileName: fileName, content: content }),
+    redirect: "follow"
+  });
+  return await r.json();
+}
+
+async function apiRead(path, fileName) {
+  var url = API_URL + "?action=read&path=" + encodeURIComponent(path) + "&fileName=" + encodeURIComponent(fileName);
+  var r = await fetch(url, { redirect: "follow" });
+  return await r.json();
+}
+
+async function apiList(path) {
+  var url = API_URL + "?action=list&path=" + encodeURIComponent(path);
+  var r = await fetch(url, { redirect: "follow" });
+  return await r.json();
+}
+
+// ── TESTES ─────────────────────────────────
+
+async function test1_ApiConexao() {
+  var idx = results.length;
+  addResult("T1: Conexão com API (list)", "running");
+  try {
+    var d = await apiList("04_PROJETOS");
+    if (d.success) {
+      updateResult(idx, "pass", "Pastas encontradas: " + (d.folders || []).join(", "));
+    } else {
+      updateResult(idx, "fail", "API retornou: " + JSON.stringify(d));
+    }
+  } catch(e) { updateResult(idx, "fail", "Erro: " + e.message); }
+}
+
+async function test2_WriteSimples() {
+  var idx = results.length;
+  addResult("T2: Escrita simples (texto)", "running");
+  try {
+    var ts = new Date().toISOString();
+    var content = "Teste automatizado - " + ts;
+    var d = await apiWrite(TEST_PATH, "_teste_e2e.txt", content);
+    if (d.success) {
+      updateResult(idx, "pass", "Arquivo _teste_e2e.txt salvo com sucesso. Resposta: " + JSON.stringify(d));
+    } else {
+      updateResult(idx, "fail", "Falha ao salvar: " + JSON.stringify(d));
+    }
+  } catch(e) { updateResult(idx, "fail", "Erro: " + e.message); }
+}
+
+async function test3_ReadBack() {
+  var idx = results.length;
+  addResult("T3: Leitura do arquivo salvo", "running");
+  try {
+    var d = await apiRead(TEST_PATH, "_teste_e2e.txt");
+    if (d.success && d.content && d.content.startsWith("Teste automatizado")) {
+      updateResult(idx, "pass", "Conteúdo lido: " + d.content);
+    } else {
+      updateResult(idx, "fail", "Leitura falhou ou conteúdo incorreto: " + JSON.stringify(d));
+    }
+  } catch(e) { updateResult(idx, "fail", "Erro: " + e.message); }
+}
+
+async function test4_WriteJSON() {
+  var idx = results.length;
+  addResult("T4: Escrita JSON (simula pontos_enviados)", "running");
+  try {
+    var testPontos = [
+      { id: "teste001", name: "foto_teste.jpg", lat: -22.527, lng: -41.945, acc: 5, timestamp: new Date().toISOString(), address: { bairro: "Centro", rua: "Rua Teste" }, operator: "E2E_Test" }
+    ];
+    var d = await apiWrite(TEST_PATH, "_teste_pontos.json", JSON.stringify(testPontos, null, 2));
+    if (d.success) {
+      updateResult(idx, "pass", "JSON salvo: 1 ponto de teste");
+    } else {
+      updateResult(idx, "fail", "Falha: " + JSON.stringify(d));
+    }
+  } catch(e) { updateResult(idx, "fail", "Erro: " + e.message); }
+}
+
+async function test5_ReadJSON() {
+  var idx = results.length;
+  addResult("T5: Leitura JSON (simula sync)", "running");
+  try {
+    var d = await apiRead(TEST_PATH, "_teste_pontos.json");
+    if (d.success && d.content) {
+      var pts = JSON.parse(d.content);
+      if (pts.length === 1 && pts[0].id === "teste001") {
+        updateResult(idx, "pass", "JSON lido corretamente: " + pts.length + " ponto, id=" + pts[0].id + ", lat=" + pts[0].lat);
+      } else {
+        updateResult(idx, "fail", "JSON lido mas conteúdo incorreto: " + JSON.stringify(pts));
+      }
+    } else {
+      updateResult(idx, "fail", "Falha na leitura: " + JSON.stringify(d));
+    }
+  } catch(e) { updateResult(idx, "fail", "Erro: " + e.message); }
+}
+
+async function test6_WriteFotoComprimida() {
+  var idx = results.length;
+  addResult("T6: Escrita foto comprimida (simula envio real)", "running");
+  try {
+    // Gera uma imagem de teste 100x100 via canvas
+    var canvas = document.createElement("canvas");
+    canvas.width = 100; canvas.height = 100;
+    var ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#3b82f6"; ctx.fillRect(0, 0, 100, 100);
+    ctx.fillStyle = "#fff"; ctx.font = "12px sans-serif"; ctx.fillText("TESTE", 25, 55);
+    var b64 = canvas.toDataURL("image/jpeg", 0.5).split(",")[1];
+    var sizeKB = Math.round(b64.length * 3 / 4 / 1024);
+
+    var payload = JSON.stringify({
+      id: "teste002", name: "foto_teste_comprimida.jpg",
+      operator: "E2E_Test", project: TEST_PROJECT,
+      lat: -22.528, lng: -41.946, acc: 3,
+      timestamp: new Date().toISOString(),
+      address: { bairro: "Centro", rua: "Rua_Teste" },
+      image_b64: b64
+    });
+
+    var payloadKB = Math.round(payload.length / 1024);
+    var d = await apiWrite(TEST_PATH + "/Centro/Rua_Teste", "teste002.json", payload);
+    if (d.success) {
+      updateResult(idx, "pass", "Foto salva! Imagem: " + sizeKB + "KB | Payload total: " + payloadKB + "KB");
+    } else {
+      updateResult(idx, "fail", "Falha: " + JSON.stringify(d));
+    }
+  } catch(e) { updateResult(idx, "fail", "Erro: " + e.message); }
+}
+
+async function test7_WriteCaderno() {
+  var idx = results.length;
+  addResult("T7: Geração de caderno Markdown", "running");
+  try {
+    var cad = "# Caderno de Campo — Centro (TESTE)\n\n"
+      + "**Projeto:** Rio das Ostras / RJ\n"
+      + "**Operador:** E2E_Test\n"
+      + "**Gerado em:** " + new Date().toISOString() + "\n\n---\n\n"
+      + "## 1. foto_teste_comprimida.jpg\n\n"
+      + "- **Rua:** Rua Teste\n"
+      + "- **Bairro:** Centro\n"
+      + "- **Coordenadas:** -22.528, -41.946 (±3m)\n"
+      + "- **ID:** teste002\n\n";
+
+    var d = await apiWrite(TEST_PATH, "_caderno_teste_e2e.md", cad);
+    if (d.success) {
+      updateResult(idx, "pass", "Caderno salvo: _caderno_teste_e2e.md (" + Math.round(cad.length / 1024) + "KB)");
+    } else {
+      updateResult(idx, "fail", "Falha: " + JSON.stringify(d));
+    }
+  } catch(e) { updateResult(idx, "fail", "Erro: " + e.message); }
+}
+
+async function test8_ListPastas() {
+  var idx = results.length;
+  addResult("T8: Listagem de pastas em cadernos_campo", "running");
+  try {
+    var d = await apiList(TEST_PATH);
+    if (d.success) {
+      var info = "Pastas: " + (d.folders || []).join(", ") + "\nArquivos: " + (d.files || []).join(", ");
+      updateResult(idx, "pass", info);
+    } else {
+      updateResult(idx, "fail", "Falha: " + JSON.stringify(d));
+    }
+  } catch(e) { updateResult(idx, "fail", "Erro: " + e.message); }
+}
+
+async function test9_CompressaoImagem() {
+  var idx = results.length;
+  addResult("T9: Compressão de imagem (Canvas)", "running");
+  try {
+    // Simula uma imagem grande (2000x1500)
+    var canvas = document.createElement("canvas");
+    canvas.width = 2000; canvas.height = 1500;
+    var ctx = canvas.getContext("2d");
+    // Preenche com gradiente
+    var grad = ctx.createLinearGradient(0, 0, 2000, 1500);
+    grad.addColorStop(0, "#f59e0b"); grad.addColorStop(1, "#3b82f6");
+    ctx.fillStyle = grad; ctx.fillRect(0, 0, 2000, 1500);
+    ctx.fillStyle = "#fff"; ctx.font = "80px sans-serif"; ctx.fillText("TESTE COMPRESSÃO", 400, 750);
+
+    var originalB64 = canvas.toDataURL("image/jpeg", 0.9).split(",")[1];
+    var originalKB = Math.round(originalB64.length * 3 / 4 / 1024);
+
+    // Agora comprime como o app faz
+    var MAX_DIM = 800, QUALITY = 0.5;
+    var scale = MAX_DIM / Math.max(2000, 1500);
+    var nw = Math.round(2000 * scale), nh = Math.round(1500 * scale);
+    var c2 = document.createElement("canvas");
+    c2.width = nw; c2.height = nh;
+    c2.getContext("2d").drawImage(canvas, 0, 0, nw, nh);
+    var compB64 = c2.toDataURL("image/jpeg", QUALITY).split(",")[1];
+    var compKB = Math.round(compB64.length * 3 / 4 / 1024);
+
+    var ratio = Math.round((1 - compKB / originalKB) * 100);
+    updateResult(idx, "pass", "Original: " + originalKB + "KB (2000x1500) → Comprimido: " + compKB + "KB (" + nw + "x" + nh + ") | Redução: " + ratio + "%");
+  } catch(e) { updateResult(idx, "fail", "Erro: " + e.message); }
+}
+
+async function test10_Limpeza() {
+  var idx = results.length;
+  addResult("T10: Limpeza dos arquivos de teste", "running");
+  try {
+    // Não há API de delete, então apenas registra
+    updateResult(idx, "pass", "Arquivos de teste criados: _teste_e2e.txt, _teste_pontos.json, _caderno_teste_e2e.md, Centro/Rua_Teste/teste002.json\n⚠️ Delete manual se necessário.");
+  } catch(e) { updateResult(idx, "fail", "Erro: " + e.message); }
+}
+
+async function runAllTests() {
+  document.getElementById("run-btn").disabled = true;
+  document.getElementById("run-btn").textContent = "⏳ Executando...";
+  results = [];
+  document.getElementById("summary").innerHTML = "";
+
+  await test1_ApiConexao();
+  await test2_WriteSimples();
+  await test3_ReadBack();
+  await test4_WriteJSON();
+  await test5_ReadJSON();
+  await test6_WriteFotoComprimida();
+  await test7_WriteCaderno();
+  await test8_ListPastas();
+  await test9_CompressaoImagem();
+  await test10_Limpeza();
+
+  document.getElementById("run-btn").disabled = false;
+  document.getElementById("run-btn").textContent = "▶️ EXECUTAR NOVAMENTE";
+}
+</script>
+</body>
+</html>
