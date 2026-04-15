@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#0a0e1a">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
-<title>Campo GEO v3.1</title>
+<title>Campo GEO v4.0</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
@@ -18,9 +18,10 @@
 }
 html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:var(--mono)}
 
-/* ── SETUP ── */
+/* SETUP */
 #setup{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;padding:24px}
-.s-logo{font-size:52px;margin-bottom:8px}
+.s-logo{width:120px;height:120px;margin-bottom:12px}
+.s-logo img{width:100%;height:100%;object-fit:contain}
 .s-title{font-family:var(--sans);font-size:26px;font-weight:800;background:linear-gradient(135deg,#f59e0b,#ef4444);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:4px}
 .s-sub{font-size:10px;color:var(--muted);letter-spacing:2px;margin-bottom:28px;text-transform:uppercase}
 .s-card{width:100%;max-width:360px;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:18px}
@@ -31,11 +32,12 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 .proj-btn:not(:disabled):hover,.proj-btn:not(:disabled):active{background:#1e40af;border-color:var(--blue);color:#93c5fd}
 .proj-btn:disabled{opacity:0.4;cursor:not-allowed}
 
-/* ── APP ── */
+/* APP */
 #app{display:none;flex-direction:column;height:100vh}
-
-/* Header */
 .hd{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid var(--border);flex-shrink:0}
+.hd-left{display:flex;align-items:center;gap:8px}
+.hd-logo{width:28px;height:28px}
+.hd-logo img{width:100%;height:100%;object-fit:contain}
 .hd-title{font-family:var(--sans);font-size:15px;font-weight:800;color:var(--accent)}
 .hd-sub{font-size:9px;color:var(--muted);margin-top:1px}
 .gps-badge{display:flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;font-size:10px;font-weight:600}
@@ -43,34 +45,27 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 .gps-buscando{background:#78350f;color:#fbbf24}
 .gps-erro{background:#7f1d1d;color:#fca5a5}
 
-/* Stats */
 .stats{display:flex;gap:6px;padding:8px 12px;border-bottom:1px solid var(--border);flex-shrink:0}
 .stat{flex:1;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:6px 8px;text-align:center}
 .stat-n{font-family:var(--sans);font-size:18px;font-weight:700}
 .stat-l{font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:1px}
 
-/* Tabs */
 .tabs{display:flex;gap:4px;padding:6px 12px;border-bottom:1px solid var(--border);flex-shrink:0}
 .tab-btn{flex:1;padding:7px 4px;border-radius:6px;border:1px solid transparent;background:transparent;color:var(--muted);font-size:10px;font-weight:600;cursor:pointer;font-family:var(--mono);transition:all 0.15s}
 .tab-btn.active{border-color:var(--blue);background:#1e40af;color:#93c5fd}
 
-/* Content */
 .content{flex:1;overflow:hidden;position:relative}
 .pane{display:none;height:100%;overflow-y:auto;flex-direction:column}
 .pane.active{display:flex}
 
-/* Mapa */
 #map{flex:1;z-index:1}
 .map-fab{position:absolute;bottom:16px;right:16px;z-index:999;background:#1e40af;border:none;border-radius:20px;color:#93c5fd;padding:8px 14px;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--mono);box-shadow:0 2px 8px rgba(0,0,0,0.6)}
-.map-fab:active{opacity:0.8}
 
-/* Foto */
 .foto-inner{padding:12px;display:flex;flex-direction:column;gap:10px}
 .cap-btn{padding:16px;border-radius:10px;border:none;background:linear-gradient(135deg,#1e40af,#3b82f6);color:#fff;font-size:16px;font-weight:700;font-family:var(--sans);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px}
 .cap-btn:active{opacity:0.85}
 .cap-btn:disabled{background:#374151;cursor:not-allowed}
 
-/* Cards genéricos */
 .card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px}
 .sec{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px}
 .row{display:flex;justify-content:space-between;padding:3px 0;font-size:11px;border-bottom:1px solid var(--border)}
@@ -81,14 +76,12 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 .geo-input:focus{outline:none;border-color:var(--blue)}
 .geo-save{width:100%;margin-top:6px;padding:8px;border-radius:6px;border:none;background:var(--blue);color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--mono)}
 
-/* Upload */
 .upl-inner{padding:12px;display:flex;flex-direction:column;gap:10px}
 .drop-zone{border:2px dashed var(--border);border-radius:10px;padding:24px;text-align:center;cursor:pointer;transition:border-color 0.15s}
 .drop-zone:hover{border-color:var(--blue)}
 .drop-icon{font-size:36px;margin-bottom:8px}
 .drop-txt{font-size:12px;color:var(--muted)}
 
-/* Fila */
 .queue-list{display:flex;flex-direction:column;gap:6px}
 .qi{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px;display:flex;gap:8px;align-items:flex-start}
 .qi-ph{width:48px;height:48px;border-radius:6px;background:var(--border);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
@@ -99,7 +92,6 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 .qi-rm{background:none;border:none;color:var(--red);font-size:16px;cursor:pointer;padding:2px 6px;flex-shrink:0}
 .empty{text-align:center;padding:32px 16px;color:var(--muted);font-size:12px}
 
-/* Enviar */
 .env-inner{padding:12px;display:flex;flex-direction:column;gap:10px}
 .send-btn{padding:14px;border-radius:10px;border:none;background:linear-gradient(135deg,#065f46,#10b981);color:#fff;font-size:14px;font-weight:700;font-family:var(--sans);cursor:pointer}
 .send-btn:disabled{background:#374151;cursor:not-allowed}
@@ -115,11 +107,11 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 </head>
 <body>
 
-<!-- ══ SETUP ═══════════════════════════════════ -->
+<!-- SETUP -->
 <div id="setup">
-  <div class="s-logo">📡</div>
+  <div class="s-logo"><img src="logo.svg" alt="Brasil Limpo"></div>
   <div class="s-title">CAMPO GEO</div>
-  <div class="s-sub">Levantamento Fotográfico Georreferenciado · v3.1</div>
+  <div class="s-sub">Levantamento Fotográfico Georreferenciado · v4.0</div>
   <div class="s-card">
     <div class="s-label">Operador</div>
     <input id="op-input" class="s-input" type="text" placeholder="Nome do operador" autocomplete="name">
@@ -128,52 +120,38 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
   </div>
 </div>
 
-<!-- ══ APP ════════════════════════════════════ -->
+<!-- APP -->
 <div id="app">
-
-  <!-- Header -->
   <div class="hd">
-    <div>
-      <div class="hd-title">CAMPO GEO <span style="font-size:9px;color:var(--muted)">v3.1</span></div>
-      <div class="hd-sub" id="hd-sub">—</div>
+    <div class="hd-left">
+      <div class="hd-logo"><img src="logo.svg" alt="BL"></div>
+      <div>
+        <div class="hd-title">CAMPO GEO <span style="font-size:9px;color:var(--muted)">v4.0</span></div>
+        <div class="hd-sub" id="hd-sub">—</div>
+      </div>
     </div>
     <div id="gps-badge" class="gps-badge gps-buscando">⏳ GPS buscando</div>
   </div>
 
-  <!-- Stats -->
   <div class="stats">
-    <div class="stat">
-      <div class="stat-n" id="st-fila" style="color:var(--blue)">0</div>
-      <div class="stat-l">Fila</div>
-    </div>
-    <div class="stat">
-      <div class="stat-n" id="st-env" style="color:var(--green)">0</div>
-      <div class="stat-l">Enviados</div>
-    </div>
-    <div class="stat">
-      <div class="stat-n" id="st-total" style="color:var(--accent)">0</div>
-      <div class="stat-l">Total</div>
-    </div>
+    <div class="stat"><div class="stat-n" id="st-fila" style="color:var(--blue)">0</div><div class="stat-l">Fila</div></div>
+    <div class="stat"><div class="stat-n" id="st-env" style="color:var(--green)">0</div><div class="stat-l">Enviados</div></div>
+    <div class="stat"><div class="stat-n" id="st-total" style="color:var(--accent)">0</div><div class="stat-l">Total</div></div>
   </div>
 
-  <!-- Tabs -->
   <div class="tabs">
-    <button class="tab-btn active" data-t="mapa"   onclick="switchTab('mapa')"  >🗺️ Mapa</button>
-    <button class="tab-btn"        data-t="foto"   onclick="switchTab('foto')"  >📸 Foto</button>
-    <button class="tab-btn"        data-t="upload" onclick="switchTab('upload')">📤 Upload</button>
-    <button class="tab-btn"        data-t="enviar" onclick="switchTab('enviar')">🚀 Enviar</button>
+    <button class="tab-btn active" data-t="mapa" onclick="switchTab('mapa')">🗺️ Mapa</button>
+    <button class="tab-btn" data-t="foto" onclick="switchTab('foto')">📸 Foto</button>
+    <button class="tab-btn" data-t="upload" onclick="switchTab('upload')">📤 Upload</button>
+    <button class="tab-btn" data-t="enviar" onclick="switchTab('enviar')">🚀 Enviar</button>
   </div>
 
-  <!-- Tab Content -->
   <div class="content">
-
-    <!-- MAPA -->
     <div id="pane-mapa" class="pane active">
       <div id="map"></div>
       <button class="map-fab" onclick="loadSynced()">🔄 Sincronizar</button>
     </div>
 
-    <!-- FOTO -->
     <div id="pane-foto" class="pane">
       <div class="foto-inner">
         <div class="card">
@@ -193,22 +171,20 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
       </div>
     </div>
 
-    <!-- UPLOAD -->
     <div id="pane-upload" class="pane">
       <div class="upl-inner">
         <div class="drop-zone" onclick="triggerUpload()">
           <div class="drop-icon">📁</div>
-          <div class="drop-txt">Toque para selecionar imagens da galeria<br><span style="font-size:9px;color:#2d3f5a">Suporta múltiplas imagens</span></div>
+          <div class="drop-txt">Toque para selecionar imagens<br><span style="font-size:9px;color:#2d3f5a">Suporta múltiplas imagens</span></div>
         </div>
         <input id="file-input" type="file" accept="image/*" multiple>
         <div class="sec" id="q-title">Fila de envio (0 fotos)</div>
         <div id="q-list" class="queue-list">
-          <div class="empty">Nenhuma foto na fila.<br>Use Foto ou Upload para adicionar.</div>
+          <div class="empty">Nenhuma foto na fila.</div>
         </div>
       </div>
     </div>
 
-    <!-- ENVIAR -->
     <div id="pane-enviar" class="pane">
       <div class="env-inner">
         <div class="card">
@@ -216,94 +192,75 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
           <div class="row"><span class="rk">Projeto</span><span class="rv" id="env-proj">—</span></div>
           <div class="row"><span class="rk">Operador</span><span class="rv" id="env-op">—</span></div>
           <div class="row"><span class="rk">Fotos na fila</span><span class="rv" id="env-n">0</span></div>
-          <div class="row"><span class="rk">Bairros</span><span class="rv" id="env-b">0</span></div>
-          <div class="row"><span class="rk">Ruas</span><span class="rv" id="env-r">0</span></div>
         </div>
         <button id="send-btn" class="send-btn" onclick="sendBatch()" disabled>✅ ENVIAR LOTE AO DRIVE</button>
         <div>
           <div class="sec">Log de Operações</div>
           <div id="terminal" class="terminal">
-            <div class="log-info"><span class="log-ts">[SISTEMA]</span> Campo GEO v3.1 pronto.</div>
+            <div class="log-info"><span class="log-ts">[SISTEMA]</span> Campo GEO v4.0 pronto.</div>
           </div>
         </div>
       </div>
     </div>
-
-  </div><!-- /content -->
-</div><!-- /app -->
+  </div>
+</div>
 
 <script>
 // ════════════════════════════════════════════════════════════
-//  CAMPO GEO v3.1 — SCRIPT PRINCIPAL
-//  FIX: marcadores persistem no mapa após envio ao Drive
-//  Persistência: localStorage (offline) + pontos_enviados.json (Drive)
+//  CAMPO GEO v4.0
+//  CORREÇÕES:
+//  1. Compressão de imagem via Canvas (max 800px, quality 0.5)
+//  2. Metadados salvos separados da imagem
+//  3. pontos_enviados.json funcional
+//  4. Auto-sync a cada 30s para estado compartilhado
+//  5. Marcadores persistentes no mapa
+//  6. Logo Brasil Limpo na home
 // ════════════════════════════════════════════════════════════
 
-const API_URL = "https://script.google.com/macros/s/AKfycbx8BehYWILdRbQi8mCv4ImGQz1gmD3I7DFESABkaiT-goB1-b-dcDL1IuqjxlDu56QM/exec";
+var API_URL = "https://script.google.com/macros/s/AKfycbx8BehYWILdRbQi8mCv4ImGQz1gmD3I7DFESABkaiT-goB1-b-dcDL1IuqjxlDu56QM/exec";
 
-const PROJECTS = [
-  { id: "rio-das-ostras", name: "Rio das Ostras / RJ", folder: "RIO_DAS_OSTRAS_RJ"     },
-  { id: "marica",         name: "Maricá / RJ",          folder: "MARICA"                },
-  { id: "implurb",        name: "IMPLURB Manaus / AM",   folder: "ADESAO_IMPLURB_MANAUS" }
+var PROJECTS = [
+  { id: "rio-das-ostras", name: "Rio das Ostras / RJ", folder: "RIO_DAS_OSTRAS_RJ" },
+  { id: "marica", name: "Maricá / RJ", folder: "MARICA" },
+  { id: "implurb", name: "IMPLURB Manaus / AM", folder: "ADESAO_IMPLURB_MANAUS" }
 ];
 
-// Deduplicação
-const DD_DIST_M = 11;   // raio em metros
-const DD_TIME_S = 10;   // janela de tempo em segundos
+var MAX_IMG_DIM = 800;
+var IMG_QUALITY = 0.5;
+var DD_DIST_M = 11;
+var DD_TIME_S = 10;
+var SYNC_INTERVAL = 30000;
 
-// ── Estado da aplicação ──────────────────────────
 var S = {
-  operator : "",
-  project  : null,
-  photos   : [],         // fila sessão atual
-  sentPts  : [],         // todos os pontos já enviados (localStorage + API)
-  map      : null,
-  gpsWatch : null,
-  gps      : null,
-  centered : false       // flag: mapa já centrou no GPS?
+  operator: "", project: null, photos: [], sentPts: [],
+  map: null, gpsWatch: null, gps: null, centered: false,
+  syncTimer: null
 };
 
-// Camadas de marcadores Leaflet
-var ML = {
-  queue : {},   // id → marker (📸 azul, na fila)
-  sent  : {}    // id → marker (✅ verde, já enviado)
-};
+var ML = { queue: {}, sent: {} };
 
-// ── Ícones ───────────────────────────────────────
 function makeIcon(emoji) {
   return L.divIcon({
     html: '<div style="font-size:28px;line-height:1;filter:drop-shadow(0 1px 3px rgba(0,0,0,0.9))">' + emoji + '</div>',
-    className: "",
-    iconSize: [28, 28],
-    iconAnchor: [14, 28]
+    className: "", iconSize: [28, 28], iconAnchor: [14, 28]
   });
 }
 var ICO_QUEUE = makeIcon("📸");
-var ICO_SENT  = makeIcon("✅");
+var ICO_SENT = makeIcon("✅");
 
-// ── Haversine ────────────────────────────────────
 function hav(lat1, lon1, lat2, lon2) {
-  var R = 6371000;
-  var dLat = (lat2 - lat1) * Math.PI / 180;
-  var dLon = (lon2 - lon1) * Math.PI / 180;
-  var a = Math.sin(dLat/2) * Math.sin(dLat/2)
-        + Math.cos(lat1 * Math.PI/180) * Math.cos(lat2 * Math.PI/180)
-        * Math.sin(dLon/2) * Math.sin(dLon/2);
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  var R = 6371000, dLat = (lat2 - lat1) * Math.PI / 180, dLon = (lon2 - lon1) * Math.PI / 180;
+  var a = Math.sin(dLat/2)*Math.sin(dLat/2) + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)*Math.sin(dLon/2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
-// ── Gerar ID único ───────────────────────────────
-function genId() {
-  return Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
-}
+function genId() { return Date.now().toString(36) + Math.random().toString(36).substr(2, 6); }
 
-// ── Terminal ─────────────────────────────────────
 function log(msg, type) {
   type = type || "info";
-  var t   = document.getElementById("terminal");
+  var t = document.getElementById("terminal");
   var now = new Date();
-  var ts  = [now.getHours(), now.getMinutes(), now.getSeconds()]
-              .map(function(n){ return String(n).padStart(2,"0"); }).join(":");
+  var ts = [now.getHours(), now.getMinutes(), now.getSeconds()].map(function(n){ return String(n).padStart(2,"0"); }).join(":");
   var div = document.createElement("div");
   div.className = "log-" + type;
   div.innerHTML = '<span class="log-ts">[' + ts + ']</span> ' + msg;
@@ -311,45 +268,62 @@ function log(msg, type) {
   t.scrollTop = t.scrollHeight;
 }
 
-// ── Deduplicação ─────────────────────────────────
 function isDup(lat, lng, name, tsMs) {
   var all = S.photos.concat(S.sentPts);
   for (var i = 0; i < all.length; i++) {
     var p = all[i];
-    if (name && p.name && p.name === name) {
-      return "nome duplicado";
-    }
-    if (p.lat != null && p.lng != null) {
+    if (name && p.name && p.name === name) return "nome duplicado";
+    if (p.lat != null && p.lng != null && lat != null && lng != null) {
       var dist = hav(lat, lng, p.lat, p.lng);
       var secs = Math.abs((tsMs - (p.ts || 0)) / 1000);
-      if (dist < DD_DIST_M && secs < DD_TIME_S) {
-        return "muito próximo (" + dist.toFixed(0) + "m / " + secs.toFixed(0) + "s)";
-      }
+      if (dist < DD_DIST_M && secs < DD_TIME_S) return "muito próximo (" + dist.toFixed(0) + "m / " + secs.toFixed(0) + "s)";
     }
   }
   return null;
 }
 
-// ── GPS ──────────────────────────────────────────
+// ── COMPRESSÃO DE IMAGEM ────────────────────
+function compressImage(file) {
+  return new Promise(function(resolve, reject) {
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      var img = new Image();
+      img.onload = function() {
+        var w = img.width, h = img.height;
+        var scale = 1;
+        if (w > MAX_IMG_DIM || h > MAX_IMG_DIM) {
+          scale = MAX_IMG_DIM / Math.max(w, h);
+        }
+        var nw = Math.round(w * scale), nh = Math.round(h * scale);
+        var canvas = document.createElement("canvas");
+        canvas.width = nw; canvas.height = nh;
+        var ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, nw, nh);
+        var dataUrl = canvas.toDataURL("image/jpeg", IMG_QUALITY);
+        var b64 = dataUrl.split(",")[1];
+        var sizeKB = Math.round(b64.length * 3 / 4 / 1024);
+        resolve({ base64: b64, sizeKB: sizeKB, width: nw, height: nh });
+      };
+      img.onerror = function() { reject(new Error("Erro ao carregar imagem")); };
+      img.src = e.target.result;
+    };
+    reader.onerror = function() { reject(new Error("Erro na leitura")); };
+    reader.readAsDataURL(file);
+  });
+}
+
+// ── GPS ──────────────────────────────────────
 function startGPS() {
   if (!navigator.geolocation) { setBadge("erro"); return; }
   setBadge("buscando");
   S.gpsWatch = navigator.geolocation.watchPosition(
     function(pos) {
-      S.gps = {
-        lat : pos.coords.latitude,
-        lng : pos.coords.longitude,
-        acc : pos.coords.accuracy,
-        ts  : Date.now()
-      };
+      S.gps = { lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy, ts: Date.now() };
       setBadge("ok");
-      document.getElementById("gps-lat").textContent  = S.gps.lat.toFixed(6);
-      document.getElementById("gps-lng").textContent  = S.gps.lng.toFixed(6);
-      document.getElementById("gps-acc").textContent  = "±" + S.gps.acc.toFixed(0) + "m";
-      if (S.map && !S.centered) {
-        S.map.setView([S.gps.lat, S.gps.lng], 16);
-        S.centered = true;
-      }
+      document.getElementById("gps-lat").textContent = S.gps.lat.toFixed(6);
+      document.getElementById("gps-lng").textContent = S.gps.lng.toFixed(6);
+      document.getElementById("gps-acc").textContent = "±" + S.gps.acc.toFixed(0) + "m";
+      if (S.map && !S.centered) { S.map.setView([S.gps.lat, S.gps.lng], 16); S.centered = true; }
     },
     function(err) { setBadge("erro"); log("GPS: " + err.message, "err"); },
     { enableHighAccuracy: true, maximumAge: 5000, timeout: 30000 }
@@ -359,73 +333,43 @@ function startGPS() {
 function setBadge(st) {
   var el = document.getElementById("gps-badge");
   el.className = "gps-badge gps-" + st;
-  if (st === "ok") {
-    el.textContent = "📍 GPS " + (S.gps ? "±" + S.gps.acc.toFixed(0) + "m" : "ativo");
-  } else if (st === "buscando") {
-    el.textContent = "⏳ GPS buscando";
-  } else {
-    el.textContent = "⚠️ GPS inativo";
-  }
+  if (st === "ok") el.textContent = "📍 GPS " + (S.gps ? "±" + S.gps.acc.toFixed(0) + "m" : "ativo");
+  else if (st === "buscando") el.textContent = "⏳ GPS buscando";
+  else el.textContent = "⚠️ GPS inativo";
 }
 
-// ── Geocodificação reversa ───────────────────────
+// ── GEOCODIFICAÇÃO ───────────────────────────
 async function geocode(lat, lng) {
   var key = localStorage.getItem("geocodeKey");
   try {
     if (key) {
-      var r = await fetch(
-        "https://maps.googleapis.com/maps/api/geocode/json?latlng=" + lat + "," + lng + "&key=" + key + "&language=pt-BR"
-      );
+      var r = await fetch("https://maps.googleapis.com/maps/api/geocode/json?latlng=" + lat + "," + lng + "&key=" + key + "&language=pt-BR");
       var d = await r.json();
       if (d.results && d.results.length > 0) {
         var c = d.results[0].address_components;
-        var g = function(type) {
-          var f = c.find(function(x){ return x.types.includes(type); });
-          return f ? f.long_name : "";
-        };
-        return {
-          bairro : g("sublocality_level_1") || g("sublocality") || g("neighborhood") || "Sem bairro",
-          rua    : g("route") || "Sem rua",
-          cidade : g("administrative_area_level_2") || "Sem cidade",
-          cep    : g("postal_code") || "",
-          fmt    : d.results[0].formatted_address
-        };
+        var g = function(type) { var f = c.find(function(x){ return x.types.includes(type); }); return f ? f.long_name : ""; };
+        return { bairro: g("sublocality_level_1") || g("sublocality") || g("neighborhood") || "Sem_bairro", rua: g("route") || "Sem_rua", cidade: g("administrative_area_level_2") || "", cep: g("postal_code") || "", fmt: d.results[0].formatted_address };
       }
     }
-    // Fallback Nominatim
-    var r2 = await fetch(
-      "https://nominatim.openstreetmap.org/reverse?format=json&lat=" + lat + "&lon=" + lng + "&accept-language=pt-BR"
-    );
+    var r2 = await fetch("https://nominatim.openstreetmap.org/reverse?format=json&lat=" + lat + "&lon=" + lng + "&accept-language=pt-BR");
     var d2 = await r2.json();
-    var a  = d2.address || {};
-    return {
-      bairro : a.suburb || a.neighbourhood || a.quarter || a.village || "Sem bairro",
-      rua    : a.road || a.pedestrian || a.footway || "Sem rua",
-      cidade : a.city || a.town || a.municipality || "Sem cidade",
-      cep    : a.postcode || "",
-      fmt    : d2.display_name || ""
-    };
+    var a = d2.address || {};
+    return { bairro: a.suburb || a.neighbourhood || a.quarter || "Sem_bairro", rua: a.road || a.pedestrian || "Sem_rua", cidade: a.city || a.town || "", cep: a.postcode || "", fmt: d2.display_name || "" };
   } catch(e) {
-    return { bairro: "Erro geo", rua: "Erro geo", cidade: "", cep: "", fmt: "" };
+    return { bairro: "Erro_geo", rua: "Erro_geo", cidade: "", cep: "", fmt: "" };
   }
 }
 
-// ── Mapa ─────────────────────────────────────────
+// ── MAPA ─────────────────────────────────────
 function initMap() {
-  S.map = L.map("map", { zoomControl: true, attributionControl: false })
-            .setView([-22.5, -42.0], 12);
+  S.map = L.map("map", { zoomControl: true, attributionControl: false }).setView([-22.5, -42.0], 12);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 }).addTo(S.map);
-
-  // Botão: ir para posição atual
   var ctrl = L.control({ position: "topleft" });
   ctrl.onAdd = function() {
     var b = L.DomUtil.create("button");
-    b.innerHTML  = "📍";
-    b.title      = "Ir para posição atual";
+    b.innerHTML = "📍"; b.title = "Posição atual";
     b.style.cssText = "padding:6px 8px;border-radius:6px;border:1px solid #1e2a4a;background:#111827;cursor:pointer;font-size:16px;color:#c8d6e5;";
-    L.DomEvent.on(b, "click", function() {
-      if (S.gps) S.map.setView([S.gps.lat, S.gps.lng], 17);
-    });
+    L.DomEvent.on(b, "click", function() { if (S.gps) S.map.setView([S.gps.lat, S.gps.lng], 17); });
     return b;
   };
   ctrl.addTo(S.map);
@@ -433,98 +377,77 @@ function initMap() {
 
 function addMarker(pt, type) {
   if (!S.map || pt.lat == null || pt.lng == null) return;
-  var ico    = (type === "sent") ? ICO_SENT : ICO_QUEUE;
-  var label  = (pt.name || "Foto");
-  var addr   = pt.address ? (pt.address.bairro + ", " + pt.address.rua) : "";
+  var ico = (type === "sent") ? ICO_SENT : ICO_QUEUE;
+  var label = pt.name || "Foto";
+  var addr = pt.address ? (pt.address.bairro + ", " + pt.address.rua) : "";
   var coords = pt.lat.toFixed(5) + ", " + pt.lng.toFixed(5);
-  var marker = L.marker([pt.lat, pt.lng], { icon: ico })
-                .bindPopup("<b>" + label + "</b><br>" + addr + "<br><small>" + coords + "</small>")
-                .addTo(S.map);
-  if (type === "sent") {
-    ML.sent[pt.id] = marker;
-  } else {
-    ML.queue[pt.id] = marker;
-  }
+  var marker = L.marker([pt.lat, pt.lng], { icon: ico }).bindPopup("<b>" + label + "</b><br>" + addr + "<br><small>" + coords + "</small>").addTo(S.map);
+  if (type === "sent") ML.sent[pt.id] = marker;
+  else ML.queue[pt.id] = marker;
 }
 
-// Converte marcador de fila (📸) para enviado (✅) — permanece no mapa
 function promoteMarker(id) {
-  if (ML.queue[id]) {
-    ML.queue[id].setIcon(ICO_SENT);
-    ML.sent[id] = ML.queue[id];
-    delete ML.queue[id];
-  }
+  if (ML.queue[id]) { ML.queue[id].setIcon(ICO_SENT); ML.sent[id] = ML.queue[id]; delete ML.queue[id]; }
 }
 
-// ── Persistência localStorage ────────────────────
-function lsKey() {
-  return S.project ? ("cg_sent_" + S.project.folder) : null;
-}
-
-function saveSentLocal() {
-  var k = lsKey();
-  if (!k) return;
-  localStorage.setItem(k, JSON.stringify(S.sentPts));
-}
+// ── PERSISTÊNCIA ─────────────────────────────
+function lsKey() { return S.project ? ("cg_sent_" + S.project.folder) : null; }
+function saveSentLocal() { var k = lsKey(); if (k) localStorage.setItem(k, JSON.stringify(S.sentPts)); }
 
 function loadSentLocal() {
-  var k = lsKey();
-  if (!k) return;
+  var k = lsKey(); if (!k) return;
   try {
-    var raw = localStorage.getItem(k);
-    if (!raw) return;
+    var raw = localStorage.getItem(k); if (!raw) return;
     var pts = JSON.parse(raw);
     S.sentPts = pts;
-    pts.forEach(function(pt) {
-      if (pt.lat != null && pt.lng != null && !ML.sent[pt.id]) {
-        addMarker(pt, "sent");
-      }
-    });
+    pts.forEach(function(pt) { if (pt.lat != null && pt.lng != null && !ML.sent[pt.id]) addMarker(pt, "sent"); });
     updateStats();
-    if (pts.length > 0) {
-      log("Cache local: " + pts.length + " pontos restaurados.", "ok");
-    }
-  } catch(e) {
-    log("Erro cache local: " + e.message, "err");
-  }
+    if (pts.length > 0) log("Cache local: " + pts.length + " pontos.", "ok");
+  } catch(e) { log("Erro cache: " + e.message, "err"); }
 }
 
-// ── Sincronizar com Drive (loadSynced) ───────────
+// ── SYNC COM DRIVE ───────────────────────────
 async function loadSynced() {
   if (!S.project) return;
-  log("Sincronizando pontos do Drive...", "info");
+  log("Sincronizando...", "info");
   try {
-    var folder = S.project.folder;
-    var path   = "04_PROJETOS/" + folder + "/cadernos_campo";
-    var file   = "pontos_enviados.json";
-    var url    = API_URL + "?action=read&path=" + encodeURIComponent(path) + "&fileName=" + encodeURIComponent(file);
-    var r      = await fetch(url, { redirect: "follow" });
-    var d      = await r.json();
-    if (!d.success || !d.content) {
-      log("Nenhum ponto no Drive ainda.", "info");
-      return;
-    }
-    var pts   = JSON.parse(d.content);
+    var path = "04_PROJETOS/" + S.project.folder + "/cadernos_campo";
+    var file = "pontos_enviados.json";
+    var url = API_URL + "?action=read&path=" + encodeURIComponent(path) + "&fileName=" + encodeURIComponent(file);
+    var r = await fetch(url, { redirect: "follow" });
+    var d = await r.json();
+    if (!d.success || !d.content) { log("Nenhum ponto no Drive.", "info"); return; }
+    var pts = JSON.parse(d.content);
     var added = 0;
     pts.forEach(function(pt) {
       var exists = S.sentPts.some(function(p){ return p.id === pt.id; });
-      if (!exists && pt.lat != null && pt.lng != null) {
-        S.sentPts.push(pt);
-        addMarker(pt, "sent");
-        added++;
-      }
+      if (!exists && pt.lat != null && pt.lng != null) { S.sentPts.push(pt); addMarker(pt, "sent"); added++; }
     });
     saveSentLocal();
     updateStats();
-    log("Drive: +" + added + " novos | total " + S.sentPts.length + " pontos.", "ok");
-  } catch(e) {
-    log("Erro sync Drive: " + e.message, "err");
-  }
+    log("Drive: +" + added + " novos | total " + S.sentPts.length, "ok");
+  } catch(e) { log("Erro sync: " + e.message, "err"); }
 }
 
-// ── Captura de foto ──────────────────────────────
+function startAutoSync() {
+  if (S.syncTimer) clearInterval(S.syncTimer);
+  S.syncTimer = setInterval(function() { loadSynced(); }, SYNC_INTERVAL);
+}
+
+// ── API WRITE ────────────────────────────────
+async function apiWrite(path, fileName, content) {
+  var r = await fetch(API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain" },
+    body: JSON.stringify({ action: "write", path: path, fileName: fileName, content: content }),
+    redirect: "follow"
+  });
+  return r.json();
+}
+
+// ── CAPTURA ──────────────────────────────────
 function capturePhoto() {
-  if (!S.gps) { alert("GPS ainda não disponível. Aguarde o fix."); return; }
+  if (!S.gps) { alert("GPS ainda não disponível."); return; }
   var inp = document.getElementById("cam-input");
   inp.value = "";
   inp.onchange = function(evt) {
@@ -534,44 +457,32 @@ function capturePhoto() {
   inp.click();
 }
 
-// ── Upload da galeria ────────────────────────────
 function triggerUpload() {
   var inp = document.getElementById("file-input");
   inp.value = "";
   inp.onchange = function(evt) {
-    var files = Array.from(evt.target.files);
-    files.forEach(function(f) {
-      var lat = S.gps ? S.gps.lat : null;
-      var lng = S.gps ? S.gps.lng : null;
+    Array.from(evt.target.files).forEach(function(f) {
+      var lat = S.gps ? S.gps.lat : null, lng = S.gps ? S.gps.lng : null;
       processPhoto(f, lat, lng, S.gps ? S.gps.acc : null, Date.now());
     });
   };
   inp.click();
 }
 
-// ── Processar nova foto ──────────────────────────
 async function processPhoto(file, lat, lng, acc, tsMs) {
   var name = file.name || ("foto_" + Date.now() + ".jpg");
-
-  // Deduplicação
   if (lat != null && lng != null) {
     var dup = isDup(lat, lng, name, tsMs);
-    if (dup) {
-      log("⚠️ Duplicata (" + dup + "): " + name, "err");
-      return;
-    }
+    if (dup) { log("⚠️ Dup (" + dup + "): " + name, "err"); return; }
   }
 
-  // Ler base64
-  var b64 = await new Promise(function(res, rej) {
-    var reader = new FileReader();
-    reader.onload  = function() { res(reader.result.split(",")[1]); };
-    reader.onerror = function() { rej(new Error("Falha na leitura")); };
-    reader.readAsDataURL(file);
-  });
+  // COMPRESSÃO
+  log("🔄 Comprimindo " + name + "...", "info");
+  var compressed;
+  try { compressed = await compressImage(file); } catch(e) { log("Erro compressão: " + e.message, "err"); return; }
+  log("✓ Comprimido: " + compressed.sizeKB + "KB (" + compressed.width + "x" + compressed.height + ")", "ok");
 
-  // Geocodificação
-  var address = { bairro: "Sem bairro", rua: "Sem rua", cidade: "", cep: "", fmt: "" };
+  var address = { bairro: "Sem_bairro", rua: "Sem_rua", cidade: "", cep: "", fmt: "" };
   if (lat != null && lng != null) {
     document.getElementById("gps-addr").textContent = "⏳ geocodificando...";
     address = await geocode(lat, lng);
@@ -579,108 +490,63 @@ async function processPhoto(file, lat, lng, acc, tsMs) {
   }
 
   var photo = {
-    id        : genId(),
-    name      : name,
-    base64    : b64,
-    lat       : lat,
-    lng       : lng,
-    acc       : acc,
-    ts        : tsMs,
-    address   : address,
-    timestamp : new Date().toISOString()
+    id: genId(), name: name, base64: compressed.base64,
+    lat: lat, lng: lng, acc: acc, ts: tsMs, address: address,
+    timestamp: new Date().toISOString(), sizeKB: compressed.sizeKB
   };
 
   S.photos.push(photo);
   if (lat != null && lng != null) addMarker(photo, "queue");
-
-  updateStats();
-  updateQueueUI();
-  log("📸 " + name + " → " + address.bairro + ", " + address.rua, "ok");
+  updateStats(); updateQueueUI();
+  log("📸 " + name + " → " + address.bairro + ", " + address.rua + " (" + compressed.sizeKB + "KB)", "ok");
 }
 
-// ── UI Fila ──────────────────────────────────────
+// ── UI FILA ──────────────────────────────────
 function updateQueueUI() {
-  var list  = document.getElementById("q-list");
+  var list = document.getElementById("q-list");
   var title = document.getElementById("q-title");
   title.textContent = "Fila de envio (" + S.photos.length + " foto" + (S.photos.length !== 1 ? "s" : "") + ")";
-
-  if (S.photos.length === 0) {
-    list.innerHTML = '<div class="empty">Nenhuma foto na fila.<br>Use Foto ou Upload para adicionar.</div>';
-    return;
-  }
-
+  if (S.photos.length === 0) { list.innerHTML = '<div class="empty">Nenhuma foto na fila.</div>'; return; }
   list.innerHTML = S.photos.map(function(p) {
-    var addr   = p.address ? (p.address.bairro + " · " + p.address.rua) : "Sem endereço";
+    var addr = p.address ? (p.address.bairro + " · " + p.address.rua) : "Sem endereço";
     var coords = (p.lat != null) ? (p.lat.toFixed(5) + ", " + p.lng.toFixed(5) + " ±" + (p.acc||0).toFixed(0) + "m") : "";
-    return '<div class="qi">'
-      + '<div class="qi-ph">📸</div>'
-      + '<div class="qi-meta">'
-      + '<div class="qi-name">' + p.name + '</div>'
-      + '<div class="qi-addr">' + addr + '</div>'
-      + (coords ? '<div class="qi-coords">' + coords + '</div>' : '')
-      + '</div>'
-      + '<button class="qi-rm" onclick="removeFromQueue(\'' + p.id + '\')">✕</button>'
-      + '</div>';
+    return '<div class="qi"><div class="qi-ph">📸</div><div class="qi-meta"><div class="qi-name">' + p.name + ' (' + (p.sizeKB||'?') + 'KB)</div><div class="qi-addr">' + addr + '</div>' + (coords ? '<div class="qi-coords">' + coords + '</div>' : '') + '</div><button class="qi-rm" onclick="removeFromQueue(\'' + p.id + '\')">✕</button></div>';
   }).join("");
 }
 
 function removeFromQueue(id) {
   S.photos = S.photos.filter(function(p){ return p.id !== id; });
-  if (ML.queue[id]) {
-    S.map.removeLayer(ML.queue[id]);
-    delete ML.queue[id];
-  }
-  updateStats();
-  updateQueueUI();
+  if (ML.queue[id]) { S.map.removeLayer(ML.queue[id]); delete ML.queue[id]; }
+  updateStats(); updateQueueUI();
 }
 
-// ── Stats ────────────────────────────────────────
 function updateStats() {
-  document.getElementById("st-fila").textContent  = S.photos.length;
-  document.getElementById("st-env").textContent   = S.sentPts.length;
+  document.getElementById("st-fila").textContent = S.photos.length;
+  document.getElementById("st-env").textContent = S.sentPts.length;
   document.getElementById("st-total").textContent = S.photos.length + S.sentPts.length;
-  document.getElementById("env-n").textContent    = S.photos.length;
-
-  var bairros = new Set(S.photos.map(function(p){ return p.address && p.address.bairro; }).filter(Boolean));
-  var ruas    = new Set(S.photos.map(function(p){ return p.address && p.address.rua;    }).filter(Boolean));
-  document.getElementById("env-b").textContent = bairros.size;
-  document.getElementById("env-r").textContent = ruas.size;
-
+  document.getElementById("env-n").textContent = S.photos.length;
   var sb = document.getElementById("send-btn");
   if (sb) sb.disabled = (S.photos.length === 0);
 }
 
-// ── API write ────────────────────────────────────
-async function apiWrite(path, fileName, content) {
-  var r = await fetch(API_URL, {
-    method  : "POST",
-    headers : { "Content-Type": "text/plain" },
-    body    : JSON.stringify({ action: "write", path: path, fileName: fileName, content: content }),
-    redirect: "follow"
-  });
-  return r.json();
-}
-
-// ── Enviar lote ──────────────────────────────────
+// ── ENVIAR LOTE ──────────────────────────────
 async function sendBatch() {
   if (S.photos.length === 0) { log("Nada para enviar.", "info"); return; }
-
   switchTab("enviar");
-
   var btn = document.getElementById("send-btn");
-  btn.disabled = true;
-  btn.textContent = "⏳ Enviando...";
+  btn.disabled = true; btn.textContent = "⏳ Enviando...";
   log("Iniciando envio de " + S.photos.length + " foto(s)...", "info");
 
-  var folder   = S.project.folder;
-  var ts       = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-  var batchId  = "lote_" + ts;
+  var folder = S.project.folder;
+  var ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+  var batchId = "lote_" + ts;
   var ok = 0, errs = 0;
 
   // Agrupar por bairro
   var byBairro = {};
   S.photos.forEach(function(p) {
     var b = (p.address && p.address.bairro) || "Sem_bairro";
+    b = b.replace(/[^a-zA-Z0-9\u00C0-\u00FF\s_-]/g, "").replace(/\s+/g, "_");
     if (!byBairro[b]) byBairro[b] = [];
     byBairro[b].push(p);
   });
@@ -688,38 +554,27 @@ async function sendBatch() {
   for (var bairro in byBairro) {
     if (!byBairro.hasOwnProperty(bairro)) continue;
     var fotos = byBairro[bairro];
-    var safe  = bairro.replace(/[^a-zA-Z0-9\u00C0-\u00FF\s_-]/g, "").replace(/\s+/g, "_");
-    var bPath = "04_PROJETOS/" + folder + "/cadernos_campo/" + safe;
+    var bPath = "04_PROJETOS/" + folder + "/cadernos_campo/" + bairro;
 
-    // Salvar cada foto como JSON no Drive
     for (var i = 0; i < fotos.length; i++) {
       var foto = fotos[i];
-      var payload = JSON.stringify({
-        id        : foto.id,
-        name      : foto.name,
-        operator  : S.operator,
-        project   : folder,
-        lat       : foto.lat,
-        lng       : foto.lng,
-        acc       : foto.acc,
-        timestamp : foto.timestamp,
-        address   : foto.address,
-        image_b64 : foto.base64
-      }, null, 2);
+
+      // 1. Salvar imagem comprimida separada
+      var imgPayload = JSON.stringify({
+        id: foto.id, name: foto.name, operator: S.operator,
+        project: folder, lat: foto.lat, lng: foto.lng, acc: foto.acc,
+        timestamp: foto.timestamp, address: foto.address,
+        image_b64: foto.base64
+      });
 
       try {
-        var res = await apiWrite(bPath, foto.id + ".json", payload);
-        if (res.success) {
-          ok++;
-          log("✓ " + foto.name + " → " + bairro, "ok");
-        } else {
-          errs++;
-          log("✗ " + foto.name + ": " + (res.error || "erro"), "err");
-        }
-      } catch(e) {
-        errs++;
-        log("✗ " + foto.name + ": " + e.message, "err");
-      }
+        var rua = (foto.address && foto.address.rua) || "Sem_rua";
+        rua = rua.replace(/[^a-zA-Z0-9\u00C0-\u00FF\s_-]/g, "").replace(/\s+/g, "_");
+        var imgPath = bPath + "/" + rua;
+        var res = await apiWrite(imgPath, foto.id + ".json", imgPayload);
+        if (res.success) { ok++; log("✓ " + foto.name + " → " + bairro + "/" + rua, "ok"); }
+        else { errs++; log("✗ " + foto.name + ": " + (res.error || "erro"), "err"); }
+      } catch(e) { errs++; log("✗ " + foto.name + ": " + e.message, "err"); }
     }
 
     // Gerar caderno Markdown por bairro
@@ -728,7 +583,6 @@ async function sendBatch() {
       + "**Operador:** " + S.operator + "  \n"
       + "**Lote:** " + batchId + "  \n"
       + "**Gerado em:** " + new Date().toISOString() + "  \n\n---\n\n";
-
     fotos.forEach(function(p, idx) {
       cad += "## " + (idx+1) + ". " + p.name + "\n\n"
           + "- **Rua:** " + (p.address ? p.address.rua : "—") + "\n"
@@ -736,100 +590,68 @@ async function sendBatch() {
           + "- **CEP:** " + (p.address ? p.address.cep : "—") + "\n"
           + "- **Coordenadas:** " + (p.lat != null ? p.lat + ", " + p.lng : "—") + " (±" + (p.acc||0).toFixed(0) + "m)\n"
           + "- **Timestamp:** " + p.timestamp + "\n"
+          + "- **Operador:** " + S.operator + "\n"
           + "- **ID:** " + p.id + "\n\n";
     });
-
-    await apiWrite(
-      "04_PROJETOS/" + folder + "/cadernos_campo",
-      "caderno_" + safe + "_" + ts + ".md",
-      cad
-    );
+    await apiWrite("04_PROJETOS/" + folder + "/cadernos_campo", "caderno_" + bairro + "_" + ts + ".md", cad);
   }
 
-  // ════════════════════════════════════════════════
-  // FIX CRÍTICO: mover fotos para sentPts
-  // Marcadores ficam no mapa como ✅ (verde)
-  // ════════════════════════════════════════════════
+  // Mover fotos para sentPts (SEM base64 — só metadados)
   var newPts = S.photos.map(function(p) {
     return {
-      id        : p.id,
-      name      : p.name,
-      lat       : p.lat,
-      lng       : p.lng,
-      acc       : p.acc,
-      ts        : p.ts,
-      timestamp : p.timestamp,
-      address   : p.address,
-      operator  : S.operator
+      id: p.id, name: p.name, lat: p.lat, lng: p.lng, acc: p.acc,
+      ts: p.ts, timestamp: p.timestamp, address: p.address, operator: S.operator
     };
   });
 
-  // Converter ícones de 📸 → ✅ (permanecem no mapa!)
   S.photos.forEach(function(p) { promoteMarker(p.id); });
-
-  // Persistir
   S.sentPts = S.sentPts.concat(newPts);
   saveSentLocal();
 
-  // Atualizar pontos_enviados.json no Drive
-  await apiWrite(
-    "04_PROJETOS/" + folder + "/cadernos_campo",
-    "pontos_enviados.json",
-    JSON.stringify(S.sentPts, null, 2)
-  );
+  // Salvar pontos_enviados.json (SEM base64 — leve!)
+  try {
+    var ptRes = await apiWrite(
+      "04_PROJETOS/" + folder + "/cadernos_campo",
+      "pontos_enviados.json",
+      JSON.stringify(S.sentPts, null, 2)
+    );
+    if (ptRes.success) log("✓ pontos_enviados.json atualizado (" + S.sentPts.length + " pontos)", "ok");
+    else log("⚠️ pontos_enviados.json: " + (ptRes.error || "erro"), "err");
+  } catch(e) { log("⚠️ pontos_enviados.json: " + e.message, "err"); }
 
-  // Limpar fila
   S.photos = [];
-
-  updateStats();
-  updateQueueUI();
-
+  updateStats(); updateQueueUI();
   btn.textContent = "✅ ENVIAR LOTE AO DRIVE";
-  btn.disabled    = (S.photos.length === 0);
-
+  btn.disabled = true;
   log("═══ LOTE " + batchId + ": " + ok + " ok | " + errs + " erro(s) ═══", ok > 0 ? "ok" : "err");
 }
 
-// ── Troca de abas ────────────────────────────────
+// ── TABS ─────────────────────────────────────
 function switchTab(tab) {
   document.querySelectorAll(".pane").forEach(function(el) { el.classList.remove("active"); });
   document.querySelectorAll(".tab-btn").forEach(function(el) { el.classList.remove("active"); });
   document.getElementById("pane-" + tab).classList.add("active");
   document.querySelector("[data-t='" + tab + "']").classList.add("active");
-  if (tab === "mapa") {
-    setTimeout(function() { if (S.map) S.map.invalidateSize(); }, 120);
-  }
-  if (tab === "upload" || tab === "enviar") {
-    updateQueueUI();
-    updateStats();
-  }
+  if (tab === "mapa") setTimeout(function() { if (S.map) S.map.invalidateSize(); }, 120);
+  if (tab === "upload" || tab === "enviar") { updateQueueUI(); updateStats(); }
 }
 
-// ── Salvar chave geocode ─────────────────────────
 function saveGeoKey() {
   var v = document.getElementById("geo-key").value.trim();
-  if (v) {
-    localStorage.setItem("geocodeKey", v);
-    log("Chave Google Maps salva.", "ok");
-  }
+  if (v) { localStorage.setItem("geocodeKey", v); log("Chave salva.", "ok"); }
 }
 
-// ── Setup ────────────────────────────────────────
+// ── SETUP ────────────────────────────────────
 function renderProjects() {
-  var cont  = document.getElementById("proj-list");
+  var cont = document.getElementById("proj-list");
   var opInp = document.getElementById("op-input");
-
   function refreshBtns() {
     var hasOp = opInp.value.trim().length > 0;
-    document.querySelectorAll(".proj-btn").forEach(function(b) {
-      b.disabled = !hasOp;
-    });
+    document.querySelectorAll(".proj-btn").forEach(function(b) { b.disabled = !hasOp; });
   }
-
   cont.innerHTML = PROJECTS.map(function(p) {
     return '<button class="proj-btn" data-pid="' + p.id + '" onclick="selectProject(\'' + p.id + '\')" disabled>' + p.name + '</button>';
   }).join("");
-
   opInp.addEventListener("input", refreshBtns);
 }
 
@@ -838,31 +660,26 @@ function selectProject(id) {
   if (!op) return;
   var proj = PROJECTS.find(function(p){ return p.id === id; });
   if (!proj) return;
-  S.operator = op;
-  S.project  = proj;
+  S.operator = op; S.project = proj;
   startApp();
 }
 
 function startApp() {
   document.getElementById("setup").style.display = "none";
-  document.getElementById("app").style.display   = "flex";
-
-  document.getElementById("hd-sub").textContent   = S.project.name + " · " + S.operator;
+  document.getElementById("app").style.display = "flex";
+  document.getElementById("hd-sub").textContent = S.project.name + " · " + S.operator;
   document.getElementById("env-proj").textContent = S.project.name;
-  document.getElementById("env-op").textContent   = S.operator;
-
+  document.getElementById("env-op").textContent = S.operator;
   var k = localStorage.getItem("geocodeKey");
   if (k) document.getElementById("geo-key").value = k;
-
-  initMap();
-  startGPS();
-  loadSentLocal();  // ← restaura marcadores do cache local imediatamente
-  updateStats();
-
-  log("Projeto: " + S.project.name + " · Operador: " + S.operator, "ok");
+  initMap(); startGPS(); loadSentLocal(); updateStats();
+  // Auto-sync após 3s e depois a cada 30s
+  setTimeout(function() { loadSynced(); }, 3000);
+  startAutoSync();
+  log("Projeto: " + S.project.name + " | Op: " + S.operator, "ok");
+  log("Auto-sync ativo (30s). Pontos compartilhados entre dispositivos.", "info");
 }
 
-// ── Bootstrap ────────────────────────────────────
 renderProjects();
 </script>
 </body>
