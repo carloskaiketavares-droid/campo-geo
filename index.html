@@ -312,6 +312,73 @@ function compressImage(file) {
   });
 }
 
+// ── LEITOR EXIF GPS ──────────────────────────
+function readExifGPS(file) {
+  return new Promise(function(resolve) {
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      try {
+        var buf = new DataView(e.target.result);
+        if (buf.getUint16(0) !== 0xFFD8) { resolve(null); return; } // not JPEG
+        var offset = 2;
+        while (offset < buf.byteLength - 1) {
+          var marker = buf.getUint16(offset);
+          if (marker === 0xFFE1) { // APP1
+            var exifOffset = offset + 4;
+            // Check "Exif\0\0"
+            var exifStr = String.fromCharCode(buf.getUint8(exifOffset), buf.getUint8(exifOffset+1), buf.getUint8(exifOffset+2), buf.getUint8(exifOffset+3));
+            if (exifStr !== "Exif") { resolve(null); return; }
+            var tiffStart = exifOffset + 6;
+            var bigEnd = buf.getUint16(tiffStart) === 0x4D4D;
+            var g16 = function(o) { return bigEnd ? buf.getUint16(tiffStart + o) : buf.getUint16(tiffStart + o, true); };
+            var g32 = function(o) { return bigEnd ? buf.getUint32(tiffStart + o) : buf.getUint32(tiffStart + o, true); };
+            var ifdOffset = g32(4);
+            var entries = g16(ifdOffset);
+            var gpsIfdPtr = null;
+            for (var i = 0; i < entries; i++) {
+              var entryOff = ifdOffset + 2 + i * 12;
+              if (g16(entryOff) === 0x8825) { gpsIfdPtr = g32(entryOff + 8); break; }
+            }
+            if (gpsIfdPtr === null) { resolve(null); return; }
+            var gpsEntries = g16(gpsIfdPtr);
+            var gpsData = {};
+            for (var j = 0; j < gpsEntries; j++) {
+              var ge = gpsIfdPtr + 2 + j * 12;
+              var tag = g16(ge);
+              var type = g16(ge + 2);
+              var valOff = g32(ge + 8);
+              if (tag === 1) { // LatRef
+                gpsData.latRef = String.fromCharCode(buf.getUint8(tiffStart + ge + 8));
+              } else if (tag === 2) { // Lat (3 rationals)
+                var la = [];
+                for (var k = 0; k < 3; k++) la.push(g32(valOff + k*8) / g32(valOff + k*8 + 4));
+                gpsData.lat = la[0] + la[1]/60 + la[2]/3600;
+              } else if (tag === 3) { // LngRef
+                gpsData.lngRef = String.fromCharCode(buf.getUint8(tiffStart + ge + 8));
+              } else if (tag === 4) { // Lng (3 rationals)
+                var lo = [];
+                for (var k = 0; k < 3; k++) lo.push(g32(valOff + k*8) / g32(valOff + k*8 + 4));
+                gpsData.lng = lo[0] + lo[1]/60 + lo[2]/3600;
+              }
+            }
+            if (gpsData.lat != null && gpsData.lng != null) {
+              if (gpsData.latRef === "S") gpsData.lat = -gpsData.lat;
+              if (gpsData.lngRef === "W") gpsData.lng = -gpsData.lng;
+              resolve({ lat: gpsData.lat, lng: gpsData.lng, acc: 1, source: "EXIF" });
+            } else { resolve(null); }
+            return;
+          }
+          var size = buf.getUint16(offset + 2);
+          offset += 2 + size;
+        }
+        resolve(null);
+      } catch(err) { resolve(null); }
+    };
+    reader.onerror = function() { resolve(null); };
+    reader.readAsArrayBuffer(file.slice(0, 131072)); // read first 128KB only
+  });
+}
+
 // ── GPS ──────────────────────────────────────
 function startGPS() {
   if (!navigator.geolocation) { setBadge("erro"); return; }
@@ -452,7 +519,7 @@ function capturePhoto() {
   inp.value = "";
   inp.onchange = function(evt) {
     var f = evt.target.files[0];
-    if (f) processPhoto(f, S.gps.lat, S.gps.lng, S.gps.acc, S.gps.ts);
+    if (f) processPhoto(f, S.gps.lat, S.gps.lng, S.gps.acc, S.gps.ts, "CAMERA");
   };
   inp.click();
 }
@@ -460,20 +527,38 @@ function capturePhoto() {
 function triggerUpload() {
   var inp = document.getElementById("file-input");
   inp.value = "";
-  inp.onchange = function(evt) {
-    Array.from(evt.target.files).forEach(function(f) {
-      var lat = S.gps ? S.gps.lat : null, lng = S.gps ? S.gps.lng : null;
-      processPhoto(f, lat, lng, S.gps ? S.gps.acc : null, Date.now());
-    });
+  inp.onchange = async function(evt) {
+    var files = Array.from(evt.target.files);
+    for (var i = 0; i < files.length; i++) {
+      var f = files[i];
+      // Tenta ler GPS do EXIF primeiro
+      var exifGps = await readExifGPS(f);
+      if (exifGps) {
+        log("📍 EXIF GPS: " + exifGps.lat.toFixed(6) + ", " + exifGps.lng.toFixed(6) + " (" + f.name + ")", "ok");
+        await processPhoto(f, exifGps.lat, exifGps.lng, exifGps.acc, Date.now(), "EXIF");
+      } else {
+        // Fallback: GPS do dispositivo
+        var lat = S.gps ? S.gps.lat : null, lng = S.gps ? S.gps.lng : null;
+        if (lat) log("📍 GPS dispositivo: " + lat.toFixed(6) + ", " + lng.toFixed(6) + " (" + f.name + ")", "info");
+        else log("⚠️ Sem GPS (EXIF nem dispositivo): " + f.name, "err");
+        await processPhoto(f, lat, lng, S.gps ? S.gps.acc : null, Date.now(), "DEVICE");
+      }
+    }
   };
   inp.click();
 }
 
-async function processPhoto(file, lat, lng, acc, tsMs) {
+async function processPhoto(file, lat, lng, acc, tsMs, gpsSource) {
   var name = file.name || ("foto_" + Date.now() + ".jpg");
-  if (lat != null && lng != null) {
+  gpsSource = gpsSource || "DEVICE";
+  // Deduplicação: para EXIF, só verifica nome; para CAMERA/DEVICE, verifica nome + GPS
+  if (lat != null && lng != null && gpsSource !== "EXIF") {
     var dup = isDup(lat, lng, name, tsMs);
     if (dup) { log("⚠️ Dup (" + dup + "): " + name, "err"); return; }
+  } else {
+    // Só verifica nome duplicado
+    var nameExists = S.photos.concat(S.sentPts).some(function(p) { return p.name === name; });
+    if (nameExists) { log("⚠️ Dup (nome): " + name, "err"); return; }
   }
 
   // COMPRESSÃO
@@ -492,13 +577,14 @@ async function processPhoto(file, lat, lng, acc, tsMs) {
   var photo = {
     id: genId(), name: name, base64: compressed.base64,
     lat: lat, lng: lng, acc: acc, ts: tsMs, address: address,
-    timestamp: new Date().toISOString(), sizeKB: compressed.sizeKB
+    timestamp: new Date().toISOString(), sizeKB: compressed.sizeKB,
+    gpsSource: gpsSource
   };
 
   S.photos.push(photo);
   if (lat != null && lng != null) addMarker(photo, "queue");
   updateStats(); updateQueueUI();
-  log("📸 " + name + " → " + address.bairro + ", " + address.rua + " (" + compressed.sizeKB + "KB)", "ok");
+  log("📸 " + name + " → " + address.bairro + ", " + address.rua + " [" + gpsSource + "] (" + compressed.sizeKB + "KB)", "ok");
 }
 
 // ── UI FILA ──────────────────────────────────
