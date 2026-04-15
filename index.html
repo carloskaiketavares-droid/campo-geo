@@ -728,18 +728,39 @@ function saveGeoKey() {
   if (v) { localStorage.setItem("geocodeKey", v); log("Chave salva.", "ok"); }
 }
 
-function resetProject() {
-  if (!confirm("⚠️ Isso vai limpar TODOS os pontos do cache local.\nPontos reais no Drive NÃO serão afetados.\n\nContinuar?")) return;
+async function resetProject() {
+  if (!confirm("⚠️ ATENÇÃO: Isso vai limpar TODOS os pontos:\n• Cache local (localStorage)\n• pontos_enviados.json no Drive\n\nAs FOTOS já salvas no Drive NÃO serão apagadas.\nOs CADERNOS já gerados NÃO serão apagados.\n\nContinuar?")) return;
+  
+  // Pausar auto-sync para não recarregar durante o reset
+  if (S.syncTimer) { clearInterval(S.syncTimer); S.syncTimer = null; }
+  
+  // 1. Limpar localStorage
   var k = lsKey();
   if (k) localStorage.removeItem(k);
-  // Limpar marcadores do mapa
+  
+  // 2. Limpar marcadores do mapa
   for (var id in ML.sent) { if (S.map) S.map.removeLayer(ML.sent[id]); }
   ML.sent = {};
   S.sentPts = [];
   updateStats();
-  log("🗑️ Cache local resetado. Use 🔄 Sincronizar para recarregar do Drive.", "ok");
-  // Tentar carregar do Drive imediatamente
-  loadSynced();
+  log("🗑️ Cache local limpo.", "ok");
+  
+  // 3. Limpar pontos_enviados.json no Drive (escrever array vazio)
+  log("🗑️ Limpando pontos_enviados.json no Drive...", "info");
+  try {
+    var folder = S.project.folder;
+    var res = await apiWrite(
+      "04_PROJETOS/" + folder + "/cadernos_campo",
+      "pontos_enviados.json",
+      JSON.stringify([], null, 2)
+    );
+    if (res.success) log("✅ Drive: pontos_enviados.json zerado.", "ok");
+    else log("⚠️ Drive: " + (res.error || "erro"), "err");
+  } catch(e) { log("⚠️ Drive: " + e.message, "err"); }
+  
+  // 4. Reativar auto-sync
+  startAutoSync();
+  log("🔄 Auto-sync reativado. Contagem: 0 pontos.", "ok");
 }
 
 // ── SETUP ────────────────────────────────────
