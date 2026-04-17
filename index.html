@@ -6,9 +6,13 @@
 <meta name="theme-color" content="#0a0e1a">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
-<title>Campo GEO v4.1</title>
+<title>Campo GEO v4.2</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<!-- v4.2: exifr (EXIF robusto), JSZip (KMZ), Google Sign-In -->
+<script src="https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -60,6 +64,8 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 
 #map{flex:1;z-index:1}
 .map-fab{position:absolute;bottom:16px;right:16px;z-index:999;background:#1e40af;border:none;border-radius:20px;color:#93c5fd;padding:8px 14px;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--mono);box-shadow:0 2px 8px rgba(0,0,0,0.6)}
+.map-fab-kmz{bottom:60px;background:#78350f;color:#fbbf24}
+.map-fab-clearkmz{bottom:104px;background:#7f1d1d;color:#fca5a5;padding:8px 12px}
 
 .foto-inner{padding:12px;display:flex;flex-direction:column;gap:10px}
 .cap-btn{padding:16px;border-radius:10px;border:none;background:linear-gradient(135deg,#1e40af,#3b82f6);color:#fff;font-size:16px;font-weight:700;font-family:var(--sans);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px}
@@ -111,12 +117,25 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 <div id="setup">
   <div class="s-logo"><img src="logo.svg" alt="Brasil Limpo"></div>
   <div class="s-title">CAMPO GEO</div>
-  <div class="s-sub">Levantamento Fotográfico Georreferenciado · v4.1</div>
+  <div class="s-sub">Levantamento Fotográfico Georreferenciado · v4.2</div>
   <div class="s-card">
-    <div class="s-label">Operador</div>
-    <input id="op-input" class="s-input" type="text" placeholder="Nome do operador" autocomplete="name">
-    <div class="s-label">Projeto</div>
-    <div id="proj-list"></div>
+    <div id="auth-section">
+      <div class="s-label">🔐 Autenticação Google</div>
+      <div id="auth-status" style="padding:10px;border-radius:8px;background:var(--bg);border:1px solid var(--border);font-size:11px;color:var(--muted);margin-bottom:12px">
+        Não autenticado
+      </div>
+      <div id="google-signin-btn" style="display:flex;justify-content:center;margin-bottom:14px"></div>
+      <div id="auth-gate-msg" style="font-size:10px;color:var(--muted);line-height:1.5;margin-bottom:14px">
+        Faça login com sua conta Google para continuar.
+      </div>
+    </div>
+    <div id="operator-section" style="display:none">
+      <div class="s-label">Operador</div>
+      <input id="op-input" class="s-input" type="text" placeholder="Nome do operador" autocomplete="name">
+      <div class="s-label">Projeto</div>
+      <div id="proj-list"></div>
+      <button onclick="signOut()" style="width:100%;margin-top:10px;padding:8px;background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:6px;font-size:10px;cursor:pointer">Sair</button>
+    </div>
   </div>
 </div>
 
@@ -126,7 +145,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
     <div class="hd-left">
       <div class="hd-logo"><img src="logo.svg" alt="BL"></div>
       <div>
-        <div class="hd-title">CAMPO GEO <span style="font-size:9px;color:var(--muted)">v4.1</span></div>
+        <div class="hd-title">CAMPO GEO <span style="font-size:9px;color:var(--muted)">v4.2</span></div>
         <div class="hd-sub" id="hd-sub">—</div>
       </div>
     </div>
@@ -150,6 +169,9 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
     <div id="pane-mapa" class="pane active">
       <div id="map"></div>
       <button class="map-fab" onclick="loadSynced()">🔄 Sincronizar</button>
+      <button class="map-fab map-fab-kmz" onclick="triggerKMZ()" title="Carregar KMZ da área de atuação">📐 KMZ</button>
+      <button class="map-fab map-fab-clearkmz" onclick="clearKMZ()" title="Remover polígono">🗑️</button>
+      <input id="kmz-input" type="file" accept=".kmz,.kml,application/vnd.google-earth.kmz,application/vnd.google-earth.kml+xml" style="display:none" onchange="onKMZSelected(event)">
     </div>
 
     <div id="pane-foto" class="pane">
@@ -196,10 +218,11 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
         <button id="send-btn" class="send-btn" onclick="sendBatch()" disabled>✅ ENVIAR LOTE AO DRIVE</button>
         <button style="width:100%;padding:10px;border-radius:8px;border:1px solid #3b82f6;background:transparent;color:#3b82f6;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--mono);margin-top:6px" onclick="scanDrivePhotos()">🔍 ESCANEAR DRIVE (reconstruir índice)</button>
         <button style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--red);background:transparent;color:var(--red);font-size:11px;font-weight:600;cursor:pointer;font-family:var(--mono);margin-top:6px" onclick="resetProject()">🗑️ RESETAR CACHE LOCAL (limpar pontos fantasma)</button>
+        <button style="width:100%;padding:10px;border-radius:8px;border:2px solid #7c2d12;background:#450a0a;color:#fca5a5;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--mono);margin-top:6px" onclick="closeProject()">🔒 ENCERRAR PROJETO (bloquear novas capturas)</button>
         <div>
           <div class="sec">Log de Operações</div>
           <div id="terminal" class="terminal">
-            <div class="log-info"><span class="log-ts">[SISTEMA]</span> Campo GEO v4.1 pronto.</div>
+            <div class="log-info"><span class="log-ts">[SISTEMA]</span> Campo GEO v4.2 pronto.</div>
           </div>
         </div>
       </div>
@@ -239,16 +262,17 @@ var S = {
   syncTimer: null
 };
 
-var ML = { queue: {}, sent: {} };
+var ML = { queue: {}, sent: {}, kmz: null };
 
-function makeIcon(emoji) {
+function makeDot(color) {
   return L.divIcon({
-    html: '<div style="font-size:28px;line-height:1;filter:drop-shadow(0 1px 3px rgba(0,0,0,0.9))">' + emoji + '</div>',
-    className: "", iconSize: [28, 28], iconAnchor: [14, 28]
+    html: '<div style="width:12px;height:12px;border-radius:50%;background:' + color + ';border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,0.6),0 1px 3px rgba(0,0,0,0.5)"></div>',
+    className: "", iconSize: [14, 14], iconAnchor: [7, 7]
   });
 }
-var ICO_QUEUE = makeIcon("📸");
-var ICO_SENT = makeIcon("✅");
+var ICO_QUEUE = makeDot("#f59e0b"); // laranja — na fila
+var ICO_SENT = makeDot("#10b981");  // verde — enviada
+var ICO_REJECTED = makeDot("#ef4444"); // vermelho — fora do polígono KMZ
 
 function hav(lat1, lon1, lat2, lon2) {
   var R = 6371000, dLat = (lat2 - lat1) * Math.PI / 180, dLon = (lon2 - lon1) * Math.PI / 180;
@@ -284,8 +308,10 @@ function isDup(lat, lng, name, tsMs) {
   return null;
 }
 
-// ── COMPRESSÃO DE IMAGEM ────────────────────
-function compressImage(file) {
+// ── COMPRESSÃO DE IMAGEM + WATERMARK ────────
+// v4.2: aplica overlay com logo, endereço, cidade/UF, coordenadas, data
+function compressImage(file, meta) {
+  meta = meta || null;
   return new Promise(function(resolve, reject) {
     var reader = new FileReader();
     reader.onload = function(e) {
@@ -301,6 +327,12 @@ function compressImage(file) {
         canvas.width = nw; canvas.height = nh;
         var ctx = canvas.getContext("2d");
         ctx.drawImage(img, 0, 0, nw, nh);
+
+        // === WATERMARK (se meta fornecido) ===
+        if (meta) {
+          drawWatermark(ctx, nw, nh, meta);
+        }
+
         var dataUrl = canvas.toDataURL("image/jpeg", IMG_QUALITY);
         var b64 = dataUrl.split(",")[1];
         var sizeKB = Math.round(b64.length * 3 / 4 / 1024);
@@ -314,71 +346,120 @@ function compressImage(file) {
   });
 }
 
-// ── LEITOR EXIF GPS ──────────────────────────
-function readExifGPS(file) {
-  return new Promise(function(resolve) {
-    var reader = new FileReader();
-    reader.onload = function(e) {
-      try {
-        var buf = new DataView(e.target.result);
-        if (buf.getUint16(0) !== 0xFFD8) { resolve(null); return; } // not JPEG
-        var offset = 2;
-        while (offset < buf.byteLength - 1) {
-          var marker = buf.getUint16(offset);
-          if (marker === 0xFFE1) { // APP1
-            var exifOffset = offset + 4;
-            // Check "Exif\0\0"
-            var exifStr = String.fromCharCode(buf.getUint8(exifOffset), buf.getUint8(exifOffset+1), buf.getUint8(exifOffset+2), buf.getUint8(exifOffset+3));
-            if (exifStr !== "Exif") { resolve(null); return; }
-            var tiffStart = exifOffset + 6;
-            var bigEnd = buf.getUint16(tiffStart) === 0x4D4D;
-            var g16 = function(o) { return bigEnd ? buf.getUint16(tiffStart + o) : buf.getUint16(tiffStart + o, true); };
-            var g32 = function(o) { return bigEnd ? buf.getUint32(tiffStart + o) : buf.getUint32(tiffStart + o, true); };
-            var ifdOffset = g32(4);
-            var entries = g16(ifdOffset);
-            var gpsIfdPtr = null;
-            for (var i = 0; i < entries; i++) {
-              var entryOff = ifdOffset + 2 + i * 12;
-              if (g16(entryOff) === 0x8825) { gpsIfdPtr = g32(entryOff + 8); break; }
-            }
-            if (gpsIfdPtr === null) { resolve(null); return; }
-            var gpsEntries = g16(gpsIfdPtr);
-            var gpsData = {};
-            for (var j = 0; j < gpsEntries; j++) {
-              var ge = gpsIfdPtr + 2 + j * 12;
-              var tag = g16(ge);
-              var type = g16(ge + 2);
-              var valOff = g32(ge + 8);
-              if (tag === 1) { // LatRef
-                gpsData.latRef = String.fromCharCode(buf.getUint8(tiffStart + ge + 8));
-              } else if (tag === 2) { // Lat (3 rationals)
-                var la = [];
-                for (var k = 0; k < 3; k++) la.push(g32(valOff + k*8) / g32(valOff + k*8 + 4));
-                gpsData.lat = la[0] + la[1]/60 + la[2]/3600;
-              } else if (tag === 3) { // LngRef
-                gpsData.lngRef = String.fromCharCode(buf.getUint8(tiffStart + ge + 8));
-              } else if (tag === 4) { // Lng (3 rationals)
-                var lo = [];
-                for (var k = 0; k < 3; k++) lo.push(g32(valOff + k*8) / g32(valOff + k*8 + 4));
-                gpsData.lng = lo[0] + lo[1]/60 + lo[2]/3600;
-              }
-            }
-            if (gpsData.lat != null && gpsData.lng != null) {
-              if (gpsData.latRef === "S") gpsData.lat = -gpsData.lat;
-              if (gpsData.lngRef === "W") gpsData.lng = -gpsData.lng;
-              resolve({ lat: gpsData.lat, lng: gpsData.lng, acc: 1, source: "EXIF" });
-            } else { resolve(null); }
-            return;
-          }
-          var size = buf.getUint16(offset + 2);
-          offset += 2 + size;
-        }
-        resolve(null);
-      } catch(err) { resolve(null); }
+// Desenha watermark de metadados no canvas (padrão IMPLURB — fiscalização TCE)
+function drawWatermark(ctx, w, h, m) {
+  // Faixa inferior semi-transparente
+  var lines = [];
+  if (m.rua) lines.push(m.rua);
+  if (m.bairro || m.cidade) lines.push([m.bairro, m.cidade, m.uf].filter(Boolean).join(" — "));
+  if (m.lat != null && m.lng != null) {
+    lines.push("GPS: " + m.lat.toFixed(6) + ", " + m.lng.toFixed(6) + (m.acc ? "  ±" + Math.round(m.acc) + "m" : ""));
+  }
+  if (m.ts) {
+    var d = new Date(m.ts);
+    lines.push(d.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "medium" }));
+  }
+  if (m.operator || m.project) {
+    lines.push([m.operator, m.project].filter(Boolean).join(" | "));
+  }
+
+  // dimensionamento proporcional à imagem (responsivo)
+  var fontPx = Math.max(14, Math.round(w * 0.022));
+  var padding = Math.round(fontPx * 0.6);
+  var lineH = Math.round(fontPx * 1.35);
+  var boxH = lines.length * lineH + padding * 2;
+  var boxY = h - boxH;
+
+  // Fundo gradiente semi-transparente
+  var grad = ctx.createLinearGradient(0, boxY, 0, h);
+  grad.addColorStop(0, "rgba(0,0,0,0.0)");
+  grad.addColorStop(0.15, "rgba(0,0,0,0.55)");
+  grad.addColorStop(1, "rgba(0,0,0,0.82)");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, boxY - padding, w, boxH + padding);
+
+  // Texto branco com sombra
+  ctx.fillStyle = "#fff";
+  ctx.font = "600 " + fontPx + "px -apple-system, 'Segoe UI', Roboto, sans-serif";
+  ctx.textBaseline = "top";
+  ctx.shadowColor = "rgba(0,0,0,0.8)";
+  ctx.shadowBlur = 4;
+  ctx.shadowOffsetY = 1;
+  for (var i = 0; i < lines.length; i++) {
+    ctx.fillText(lines[i], padding, boxY + padding + i * lineH);
+  }
+  ctx.shadowColor = "transparent";
+
+  // Logo BRASIL LIMPO no canto superior direito (se carregada)
+  if (WATERMARK_LOGO && WATERMARK_LOGO.complete && WATERMARK_LOGO.naturalWidth > 0) {
+    var logoH = Math.round(h * 0.11);
+    var logoW = Math.round(logoH * (WATERMARK_LOGO.naturalWidth / WATERMARK_LOGO.naturalHeight));
+    var lx = w - logoW - padding;
+    var ly = padding;
+    // fundo branco semi-transparente atrás do logo
+    ctx.fillStyle = "rgba(255,255,255,0.85)";
+    ctx.fillRect(lx - 6, ly - 6, logoW + 12, logoH + 12);
+    ctx.drawImage(WATERMARK_LOGO, lx, ly, logoW, logoH);
+  }
+
+  // Badge "EVIDÊNCIA GEORREFERENCIADA" — canto superior esquerdo
+  var badgeTxt = "EVIDÊNCIA GEORREFERENCIADA";
+  var badgeFont = Math.max(10, Math.round(fontPx * 0.65));
+  ctx.font = "700 " + badgeFont + "px -apple-system, 'Segoe UI', Roboto, sans-serif";
+  var badgeW = ctx.measureText(badgeTxt).width + padding * 2;
+  var badgeH = badgeFont * 1.8;
+  ctx.fillStyle = "rgba(245,158,11,0.92)";
+  ctx.fillRect(padding, padding, badgeW, badgeH);
+  ctx.fillStyle = "#000";
+  ctx.fillText(badgeTxt, padding * 2, padding + badgeH * 0.3);
+}
+
+// Logo (carregada uma vez no boot)
+var WATERMARK_LOGO = null;
+function loadWatermarkLogo() {
+  WATERMARK_LOGO = new Image();
+  WATERMARK_LOGO.crossOrigin = "anonymous";
+  WATERMARK_LOGO.src = "logo.svg";
+}
+
+// ── LEITOR EXIF GPS (via exifr — v4.2) ───────
+// Lida com JPEG, HEIC (iPhone), RAW; byte-order correto; GPS + timestamp
+async function readExifGPS(file) {
+  try {
+    if (typeof exifr === "undefined") {
+      log("⚠️ Biblioteca exifr não carregou", "err");
+      return null;
+    }
+    var data = await exifr.parse(file, {
+      gps: true,
+      exif: true,
+      tiff: true,
+      pick: ["latitude", "longitude", "GPSLatitude", "GPSLongitude",
+             "GPSAltitude", "DateTimeOriginal", "CreateDate", "ModifyDate",
+             "GPSHPositioningError"]
+    });
+    if (!data) return null;
+    var lat = data.latitude;
+    var lng = data.longitude;
+    if (lat == null || lng == null) return null;
+    // timestamp da foto (fallback: agora)
+    var ts = null;
+    var dt = data.DateTimeOriginal || data.CreateDate || data.ModifyDate;
+    if (dt) {
+      try { ts = (dt instanceof Date) ? dt.getTime() : new Date(dt).getTime(); } catch(e) {}
+    }
+    return {
+      lat: lat,
+      lng: lng,
+      acc: data.GPSHPositioningError || 5, // fallback 5m
+      alt: data.GPSAltitude || null,
+      ts: ts,
+      source: "EXIF"
     };
-    reader.onerror = function() { resolve(null); };
-    reader.readAsArrayBuffer(file.slice(0, 131072)); // read first 128KB only
-  });
+  } catch(err) {
+    log("EXIF erro: " + err.message, "err");
+    return null;
+  }
 }
 
 // ── GPS ──────────────────────────────────────
@@ -417,15 +498,16 @@ async function geocode(lat, lng) {
       if (d.results && d.results.length > 0) {
         var c = d.results[0].address_components;
         var g = function(type) { var f = c.find(function(x){ return x.types.includes(type); }); return f ? f.long_name : ""; };
-        return { bairro: g("sublocality_level_1") || g("sublocality") || g("neighborhood") || "Sem_bairro", rua: g("route") || "Sem_rua", cidade: g("administrative_area_level_2") || "", cep: g("postal_code") || "", fmt: d.results[0].formatted_address };
+        var gs = function(type) { var f = c.find(function(x){ return x.types.includes(type); }); return f ? f.short_name : ""; };
+        return { bairro: g("sublocality_level_1") || g("sublocality") || g("neighborhood") || "Sem_bairro", rua: g("route") || "Sem_rua", cidade: g("administrative_area_level_2") || "", uf: gs("administrative_area_level_1") || "", cep: g("postal_code") || "", fmt: d.results[0].formatted_address };
       }
     }
     var r2 = await fetch("https://nominatim.openstreetmap.org/reverse?format=json&lat=" + lat + "&lon=" + lng + "&accept-language=pt-BR");
     var d2 = await r2.json();
     var a = d2.address || {};
-    return { bairro: a.suburb || a.neighbourhood || a.quarter || "Sem_bairro", rua: a.road || a.pedestrian || "Sem_rua", cidade: a.city || a.town || "", cep: a.postcode || "", fmt: d2.display_name || "" };
+    return { bairro: a.suburb || a.neighbourhood || a.quarter || "Sem_bairro", rua: a.road || a.pedestrian || "Sem_rua", cidade: a.city || a.town || "", uf: a.state_code || (a.state ? a.state.substring(0,2).toUpperCase() : ""), cep: a.postcode || "", fmt: d2.display_name || "" };
   } catch(e) {
-    return { bairro: "Erro_geo", rua: "Erro_geo", cidade: "", cep: "", fmt: "" };
+    return { bairro: "Erro_geo", rua: "Erro_geo", cidade: "", uf: "", cep: "", fmt: "" };
   }
 }
 
@@ -453,6 +535,158 @@ function addMarker(pt, type) {
   var marker = L.marker([pt.lat, pt.lng], { icon: ico }).bindPopup("<b>" + label + "</b><br>" + addr + "<br><small>" + coords + "</small>").addTo(S.map);
   if (type === "sent") ML.sent[pt.id] = marker;
   else ML.queue[pt.id] = marker;
+}
+
+// ── KMZ / KML LOADER (v4.2) ──────────────────
+// Lê arquivo KMZ (zip com KML dentro) ou KML puro, extrai polígono de atuação,
+// desenha no mapa e limita captura às coordenadas dentro da área.
+async function loadKMZFile(file) {
+  if (typeof JSZip === "undefined") {
+    log("⚠️ JSZip não carregou", "err"); return;
+  }
+  try {
+    var kmlText = null;
+    var name = (file.name || "").toLowerCase();
+    if (name.endsWith(".kmz")) {
+      var zip = await JSZip.loadAsync(file);
+      // procurar primeiro arquivo .kml dentro do zip
+      var kmlFile = null;
+      zip.forEach(function(path, entry) {
+        if (!kmlFile && path.toLowerCase().endsWith(".kml")) kmlFile = entry;
+      });
+      if (!kmlFile) { log("⚠️ KMZ sem KML dentro", "err"); return; }
+      kmlText = await kmlFile.async("string");
+    } else if (name.endsWith(".kml")) {
+      kmlText = await file.text();
+    } else {
+      log("⚠️ Arquivo deve ser .kmz ou .kml", "err"); return;
+    }
+
+    var polys = parseKMLPolygons(kmlText);
+    if (polys.length === 0) {
+      log("⚠️ Nenhum polígono encontrado no KML", "err"); return;
+    }
+
+    // usa o PRIMEIRO polígono como área de atuação (mais comum)
+    // polys[0] é um array de [lat, lng]
+    S.kmzPolygon = polys[0];
+    S.kmzAllPolygons = polys;
+
+    drawKMZPolygons(polys);
+
+    // persistir no localStorage do projeto
+    if (S.project) {
+      try {
+        localStorage.setItem("cg_kmz_" + S.project.folder, JSON.stringify(polys));
+      } catch(e) {}
+    }
+
+    var totalPts = polys.reduce(function(a, p){ return a + p.length; }, 0);
+    log("✅ KMZ carregado: " + polys.length + " polígono(s), " + totalPts + " vértices", "ok");
+
+    // ajustar viewport do mapa para o polígono
+    if (S.map) {
+      var bounds = L.latLngBounds(polys[0]);
+      S.map.fitBounds(bounds, { padding: [20, 20] });
+    }
+  } catch(err) {
+    log("Erro ao ler KMZ: " + err.message, "err");
+  }
+}
+
+// Parse KML → array de polígonos, cada polígono = array de [lat, lng]
+function parseKMLPolygons(kmlText) {
+  var parser = new DOMParser();
+  var doc = parser.parseFromString(kmlText, "application/xml");
+  var polys = [];
+
+  // <Polygon><outerBoundaryIs><LinearRing><coordinates>...</>...
+  var coordNodes = doc.getElementsByTagName("coordinates");
+  for (var i = 0; i < coordNodes.length; i++) {
+    // verifica se está dentro de Polygon/outerBoundaryIs (ignora LineString de rota)
+    var node = coordNodes[i];
+    var ancestor = node.parentNode;
+    var insidePolygon = false;
+    while (ancestor) {
+      if (ancestor.tagName === "Polygon" || ancestor.nodeName === "Polygon") {
+        insidePolygon = true; break;
+      }
+      ancestor = ancestor.parentNode;
+    }
+    if (!insidePolygon) continue;
+
+    var raw = (node.textContent || "").trim();
+    var points = [];
+    raw.split(/\s+/).forEach(function(triplet) {
+      if (!triplet) return;
+      var parts = triplet.split(",");
+      if (parts.length < 2) return;
+      var lng = parseFloat(parts[0]);
+      var lat = parseFloat(parts[1]);
+      if (!isNaN(lat) && !isNaN(lng)) points.push([lat, lng]);
+    });
+    if (points.length >= 3) polys.push(points);
+  }
+  return polys;
+}
+
+// Desenha os polígonos no mapa com estilo destacado
+function drawKMZPolygons(polys) {
+  // limpa anteriores
+  if (ML.kmzLayers) {
+    ML.kmzLayers.forEach(function(l){ if (S.map) S.map.removeLayer(l); });
+  }
+  ML.kmzLayers = [];
+  polys.forEach(function(poly, idx) {
+    var layer = L.polygon(poly, {
+      color: "#f59e0b",
+      weight: 3,
+      opacity: 0.9,
+      fillColor: "#f59e0b",
+      fillOpacity: 0.08,
+      dashArray: idx === 0 ? null : "5, 5"
+    }).addTo(S.map);
+    layer.bindTooltip("Área de atuação" + (polys.length > 1 ? " #" + (idx+1) : ""), { sticky: true });
+    ML.kmzLayers.push(layer);
+  });
+}
+
+// Restaura KMZ salvo no localStorage ao trocar projeto
+function restoreKMZ() {
+  if (!S.project) return;
+  try {
+    var raw = localStorage.getItem("cg_kmz_" + S.project.folder);
+    if (!raw) return;
+    var polys = JSON.parse(raw);
+    if (Array.isArray(polys) && polys.length > 0) {
+      S.kmzPolygon = polys[0];
+      S.kmzAllPolygons = polys;
+      if (S.map) drawKMZPolygons(polys);
+      log("↻ Polígono KMZ restaurado (" + polys.length + ")", "info");
+    }
+  } catch(e) {}
+}
+
+// Limpa KMZ do projeto atual
+function clearKMZ() {
+  if (!confirm("Remover o polígono de atuação do projeto atual?")) return;
+  S.kmzPolygon = null;
+  S.kmzAllPolygons = null;
+  if (ML.kmzLayers) ML.kmzLayers.forEach(function(l){ if (S.map) S.map.removeLayer(l); });
+  ML.kmzLayers = [];
+  if (S.project) localStorage.removeItem("cg_kmz_" + S.project.folder);
+  log("🗑️ KMZ removido", "ok");
+}
+
+// Handler do input file do KMZ
+function triggerKMZ() {
+  var inp = document.getElementById("kmz-input");
+  if (inp) inp.click();
+}
+function onKMZSelected(ev) {
+  var f = ev.target.files[0];
+  if (f) loadKMZFile(f);
+  ev.target.value = "";
 }
 
 function promoteMarker(id) {
@@ -516,6 +750,7 @@ async function apiWrite(path, fileName, content) {
 
 // ── CAPTURA ──────────────────────────────────
 function capturePhoto() {
+  if (S.readOnly) { alert("🔒 Projeto encerrado — capturas bloqueadas (modo leitura)."); return; }
   if (!S.gps) { alert("GPS ainda não disponível."); return; }
   var inp = document.getElementById("cam-input");
   inp.value = "";
@@ -527,6 +762,7 @@ function capturePhoto() {
 }
 
 function triggerUpload() {
+  if (S.readOnly) { alert("🔒 Projeto encerrado — uploads bloqueados (modo leitura)."); return; }
   var inp = document.getElementById("file-input");
   inp.value = "";
   inp.onchange = async function(evt) {
@@ -553,28 +789,54 @@ function triggerUpload() {
 async function processPhoto(file, lat, lng, acc, tsMs, gpsSource) {
   var name = file.name || ("foto_" + Date.now() + ".jpg");
   gpsSource = gpsSource || "DEVICE";
+
   // Deduplicação: para EXIF, só verifica nome; para CAMERA/DEVICE, verifica nome + GPS
   if (lat != null && lng != null && gpsSource !== "EXIF") {
     var dup = isDup(lat, lng, name, tsMs);
     if (dup) { log("⚠️ Dup (" + dup + "): " + name, "err"); return; }
   } else {
-    // Só verifica nome duplicado
     var nameExists = S.photos.concat(S.sentPts).some(function(p) { return p.name === name; });
     if (nameExists) { log("⚠️ Dup (nome): " + name, "err"); return; }
   }
 
-  // COMPRESSÃO
-  log("🔄 Comprimindo " + name + "...", "info");
-  var compressed;
-  try { compressed = await compressImage(file); } catch(e) { log("Erro compressão: " + e.message, "err"); return; }
-  log("✓ Comprimido: " + compressed.sizeKB + "KB (" + compressed.width + "x" + compressed.height + ")", "ok");
+  // === VALIDAÇÃO KMZ (se polígono de atuação carregado) ===
+  if (S.kmzPolygon && lat != null && lng != null) {
+    if (!pointInPolygon([lat, lng], S.kmzPolygon)) {
+      log("🚫 FORA da área de atuação: " + name + " (" + lat.toFixed(5) + "," + lng.toFixed(5) + ")", "err");
+      // marca no mapa em vermelho para visualização
+      if (S.map) {
+        var rejMk = L.marker([lat, lng], { icon: ICO_REJECTED }).addTo(S.map);
+        rejMk.bindPopup("<b>REJEITADA</b><br>Fora do polígono KMZ<br>" + name).openPopup();
+        setTimeout(function(){ if (S.map) S.map.removeLayer(rejMk); }, 8000);
+      }
+      return;
+    }
+  }
 
-  var address = { bairro: "Sem_bairro", rua: "Sem_rua", cidade: "", cep: "", fmt: "" };
+  // === GEOCODIFICAÇÃO PRIMEIRO (para watermark ter endereço) ===
+  var address = { bairro: "Sem_bairro", rua: "Sem_rua", cidade: "", uf: "", cep: "", fmt: "" };
   if (lat != null && lng != null) {
     document.getElementById("gps-addr").textContent = "⏳ geocodificando...";
     address = await geocode(lat, lng);
     document.getElementById("gps-addr").textContent = address.bairro + ", " + address.rua;
   }
+
+  // === COMPRESSÃO + WATERMARK ===
+  log("🔄 Comprimindo + marcando " + name + "...", "info");
+  var watermarkMeta = {
+    rua: address.rua,
+    bairro: address.bairro,
+    cidade: address.cidade,
+    uf: address.uf || "",
+    lat: lat, lng: lng, acc: acc, ts: tsMs,
+    operator: S.operator || "",
+    project: S.project ? S.project.name : ""
+  };
+  var compressed;
+  try {
+    compressed = await compressImage(file, watermarkMeta);
+  } catch(e) { log("Erro compressão: " + e.message, "err"); return; }
+  log("✓ Comprimido+watermark: " + compressed.sizeKB + "KB (" + compressed.width + "x" + compressed.height + ")", "ok");
 
   var photo = {
     id: genId(), name: name, base64: compressed.base64,
@@ -587,6 +849,18 @@ async function processPhoto(file, lat, lng, acc, tsMs, gpsSource) {
   if (lat != null && lng != null) addMarker(photo, "queue");
   updateStats(); updateQueueUI();
   log("📸 " + name + " → " + address.bairro + ", " + address.rua + " [" + gpsSource + "] (" + compressed.sizeKB + "KB)", "ok");
+}
+
+// ── RAY CASTING — ponto dentro de polígono ──
+function pointInPolygon(pt, poly) {
+  var x = pt[0], y = pt[1], inside = false;
+  for (var i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    var xi = poly[i][0], yi = poly[i][1];
+    var xj = poly[j][0], yj = poly[j][1];
+    var intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
 }
 
 // ── UI FILA ──────────────────────────────────
@@ -932,8 +1206,19 @@ function renderProjects() {
 function selectProject(id) {
   var op = document.getElementById("op-input").value.trim();
   if (!op) return;
+  if (!S.authUser) { alert("Faça login com Google primeiro."); return; }
   var proj = PROJECTS.find(function(p){ return p.id === id; });
   if (!proj) return;
+  if (isProjectClosed(proj.folder)) {
+    var force = confirm(
+      "⚠️ Este projeto foi ENCERRADO.\n\n" +
+      "Capturas de campo estão bloqueadas.\n" +
+      "Você pode abrir APENAS para visualização (modo leitura).\n\n" +
+      "Continuar em modo leitura?"
+    );
+    if (!force) return;
+    S.readOnly = true;
+  }
   S.operator = op; S.project = proj;
   startApp();
 }
@@ -946,15 +1231,225 @@ function startApp() {
   document.getElementById("env-op").textContent = S.operator;
   var k = localStorage.getItem("geocodeKey");
   if (k) document.getElementById("geo-key").value = k;
+  loadWatermarkLogo(); // v4.2: pré-carrega logo para watermark
   initMap(); startGPS(); loadSentLocal(); updateStats();
+  restoreKMZ(); // v4.2: restaura polígono KMZ salvo se houver
   // Auto-sync após 3s e depois a cada 30s
   setTimeout(function() { loadSynced(); }, 3000);
   startAutoSync();
   log("Projeto: " + S.project.name + " | Op: " + S.operator, "ok");
   log("Auto-sync ativo (30s). Pontos compartilhados entre dispositivos.", "info");
+  if (S.authUser) log("🔐 Login: " + S.authUser.email, "ok");
+}
+
+// ── GOOGLE SIGN-IN (v4.2) ────────────────────
+// Gate de autenticação — app só libera operador/projeto após login Google.
+// Client ID é configurável via localStorage (primeira vez o admin cola a chave).
+// Allowlist de e-mails via localStorage "cg_auth_allowlist" (separados por vírgula, vazio = libera qualquer Google account).
+
+var GSI_STATE = { initialized: false };
+
+function decodeJwt(token) {
+  try {
+    var payload = token.split(".")[1];
+    var json = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
+    return JSON.parse(decodeURIComponent(escape(json)));
+  } catch(e) { return null; }
+}
+
+function handleCredentialResponse(response) {
+  if (!response || !response.credential) return;
+  var user = decodeJwt(response.credential);
+  if (!user) { log("❌ JWT inválido", "err"); return; }
+
+  // Verifica allowlist (se configurada)
+  var allowlist = (localStorage.getItem("cg_auth_allowlist") || "").split(",").map(function(e){ return e.trim().toLowerCase(); }).filter(Boolean);
+  if (allowlist.length > 0 && allowlist.indexOf((user.email || "").toLowerCase()) === -1) {
+    document.getElementById("auth-status").innerHTML = '❌ E-mail <b>' + user.email + '</b> não autorizado. Contate o admin.';
+    document.getElementById("auth-status").style.color = "var(--red)";
+    return;
+  }
+
+  S.authUser = {
+    email: user.email,
+    name: user.name,
+    picture: user.picture,
+    sub: user.sub,
+    iat: user.iat
+  };
+  try { sessionStorage.setItem("cg_auth_user", JSON.stringify(S.authUser)); } catch(e) {}
+
+  document.getElementById("auth-status").innerHTML =
+    '<div style="display:flex;align-items:center;gap:8px">' +
+    (user.picture ? '<img src="' + user.picture + '" style="width:28px;height:28px;border-radius:50%">' : '') +
+    '<div><div style="color:#fff;font-weight:600">' + (user.name || user.email) + '</div>' +
+    '<div style="font-size:9px">' + user.email + '</div></div></div>';
+  document.getElementById("auth-status").style.color = "var(--green)";
+  document.getElementById("auth-gate-msg").style.display = "none";
+  document.getElementById("google-signin-btn").style.display = "none";
+  document.getElementById("operator-section").style.display = "block";
+
+  // Pré-preenche nome do operador
+  var opInp = document.getElementById("op-input");
+  if (opInp && !opInp.value) {
+    opInp.value = user.name || user.email.split("@")[0];
+    opInp.dispatchEvent(new Event("input"));
+  }
+}
+
+function signOut() {
+  S.authUser = null;
+  try { sessionStorage.removeItem("cg_auth_user"); } catch(e) {}
+  if (window.google && google.accounts && google.accounts.id) {
+    try { google.accounts.id.disableAutoSelect(); } catch(e) {}
+  }
+  location.reload();
+}
+
+function promptGoogleConfig() {
+  var current = localStorage.getItem("cg_gsi_client_id") || "";
+  var nv = prompt(
+    "Google OAuth 2.0 Client ID\n\n" +
+    "Como obter:\n" +
+    "1. Acesse console.cloud.google.com → APIs & Services → Credentials\n" +
+    "2. Create Credentials → OAuth client ID → Web application\n" +
+    "3. Authorized JavaScript origins: https://carloskaiketavares-droid.github.io\n" +
+    "4. Copie o Client ID e cole aqui:",
+    current
+  );
+  if (nv != null && nv.trim()) {
+    localStorage.setItem("cg_gsi_client_id", nv.trim());
+    location.reload();
+  }
+}
+
+function promptAllowlist() {
+  var current = localStorage.getItem("cg_auth_allowlist") || "";
+  var nv = prompt(
+    "Allowlist de e-mails (separados por vírgula)\n\n" +
+    "Exemplo: kaike@brasillimpo.com, operador1@gmail.com\n" +
+    "(deixe vazio para liberar qualquer conta Google)",
+    current
+  );
+  if (nv != null) {
+    localStorage.setItem("cg_auth_allowlist", nv.trim());
+    alert("Allowlist salva. Recarregando…");
+    location.reload();
+  }
+}
+
+function initGoogleSignIn() {
+  if (GSI_STATE.initialized) return;
+  var clientId = localStorage.getItem("cg_gsi_client_id") || "";
+
+  // Se já tem sessão válida neste navegador, restaura sem pedir login de novo
+  try {
+    var saved = sessionStorage.getItem("cg_auth_user");
+    if (saved) {
+      S.authUser = JSON.parse(saved);
+      document.getElementById("auth-status").innerHTML =
+        '<div style="display:flex;align-items:center;gap:8px">' +
+        (S.authUser.picture ? '<img src="' + S.authUser.picture + '" style="width:28px;height:28px;border-radius:50%">' : '') +
+        '<div><div style="color:#fff;font-weight:600">' + (S.authUser.name || S.authUser.email) + '</div>' +
+        '<div style="font-size:9px">' + S.authUser.email + '</div></div></div>';
+      document.getElementById("auth-status").style.color = "var(--green)";
+      document.getElementById("auth-gate-msg").style.display = "none";
+      document.getElementById("google-signin-btn").style.display = "none";
+      document.getElementById("operator-section").style.display = "block";
+      var opInp = document.getElementById("op-input");
+      if (opInp && !opInp.value) {
+        opInp.value = S.authUser.name || S.authUser.email.split("@")[0];
+        opInp.dispatchEvent(new Event("input"));
+      }
+      return;
+    }
+  } catch(e) {}
+
+  if (!clientId) {
+    document.getElementById("auth-status").innerHTML =
+      '⚠️ <b>Client ID não configurado</b><br><small>Admin: clique abaixo para configurar</small>';
+    document.getElementById("google-signin-btn").innerHTML =
+      '<button onclick="promptGoogleConfig()" style="padding:10px 16px;background:var(--accent);color:#000;border:none;border-radius:6px;font-weight:700;cursor:pointer">⚙️ Configurar Google OAuth</button>' +
+      '<button onclick="promptAllowlist()" style="margin-top:8px;padding:8px 12px;background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:6px;font-size:10px;cursor:pointer;width:100%">Gerenciar allowlist de e-mails</button>';
+    return;
+  }
+
+  // Aguarda a biblioteca google.accounts carregar
+  var tries = 0;
+  function tryInit() {
+    if (!(window.google && google.accounts && google.accounts.id)) {
+      if (tries++ < 20) { setTimeout(tryInit, 250); return; }
+      document.getElementById("auth-status").innerHTML = '❌ Biblioteca Google Sign-In não carregou. Sem internet?';
+      document.getElementById("auth-status").style.color = "var(--red)";
+      return;
+    }
+    try {
+      google.accounts.id.initialize({
+        client_id: clientId,
+        callback: handleCredentialResponse,
+        auto_select: false,
+        cancel_on_tap_outside: false
+      });
+      google.accounts.id.renderButton(
+        document.getElementById("google-signin-btn"),
+        { theme: "filled_black", size: "large", type: "standard", shape: "rectangular", text: "signin_with", logo_alignment: "left", width: 280 }
+      );
+      GSI_STATE.initialized = true;
+      // Botões admin discretos
+      var footer = document.createElement("div");
+      footer.style.cssText = "text-align:center;margin-top:14px;font-size:10px";
+      footer.innerHTML =
+        '<a href="#" onclick="promptGoogleConfig();return false" style="color:var(--muted);margin-right:10px">Reconfigurar OAuth</a>' +
+        '<a href="#" onclick="promptAllowlist();return false" style="color:var(--muted)">Allowlist</a>';
+      document.getElementById("google-signin-btn").appendChild(footer);
+    } catch(err) {
+      document.getElementById("auth-status").innerHTML = '❌ Erro init GSI: ' + err.message;
+      document.getElementById("auth-status").style.color = "var(--red)";
+    }
+  }
+  tryInit();
+}
+
+// ── ENCERRAR PROJETO (v4.2) ──────────────────
+// Após depuração documental concluída, desconecta o app do projeto
+// e impede novas capturas até nova configuração pelo admin.
+function closeProject() {
+  if (!S.project) return;
+  var msg =
+    "⚠️ ENCERRAR PROJETO " + S.project.name + "\n\n" +
+    "Isso vai:\n" +
+    "• Bloquear novas capturas neste app\n" +
+    "• Manter fotos e polígono KMZ salvos (não apaga nada)\n" +
+    "• Registrar no log do vault: projeto encerrado\n\n" +
+    "Use SOMENTE após a depuração documental estar concluída.\n\n" +
+    "Digite ENCERRAR para confirmar:";
+  var conf = prompt(msg);
+  if (conf !== "ENCERRAR") { log("Cancelado.", "info"); return; }
+  try {
+    localStorage.setItem("cg_closed_" + S.project.folder, JSON.stringify({
+      closedAt: new Date().toISOString(),
+      operator: S.operator,
+      authUser: S.authUser ? S.authUser.email : null
+    }));
+  } catch(e) {}
+  // Log no vault (best-effort)
+  try {
+    apiWrite("04_PROJETOS/" + S.project.folder, "PROJETO_ENCERRADO.md",
+      "---\nprojeto: " + S.project.name + "\nencerrado_em: " + new Date().toISOString() +
+      "\noperador: " + S.operator + "\nauth: " + (S.authUser ? S.authUser.email : "n/a") +
+      "\n---\n\n# Projeto " + S.project.name + " — ENCERRADO\n\n" +
+      "Depuração documental concluída. Capturas de campo bloqueadas a partir desta data.\n");
+  } catch(e) {}
+  alert("✅ Projeto " + S.project.name + " encerrado. O app será recarregado.");
+  signOut();
+}
+
+function isProjectClosed(folder) {
+  try { return !!localStorage.getItem("cg_closed_" + folder); } catch(e) { return false; }
 }
 
 renderProjects();
+initGoogleSignIn();
 </script>
 </body>
 </html>
