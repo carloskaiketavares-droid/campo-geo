@@ -71,7 +71,7 @@ Substituição do mapa desenhado por arquivo KMZ real:
 ## 📋 Checklist pós-deploy (admin)
 
 1. [ ] No Google Cloud Console: criar OAuth Client ID Web
-   - Authorized origins: `https://carloskaike.tavares@hmail.com`
+   - Authorized origins: `(https://carloskaiketavares-droid.github.io)`
 2. [ ] Abrir o app no browser → clicar "⚙️ Configurar Google OAuth" → colar Client ID
 3. [ ] (Opcional) Clicar "Allowlist" → colar e-mails autorizados separados por vírgula
 4. [ ] Para próxima cidade: gerar KMZ no Google Earth → enviar para operador → operador carrega via 📐 KMZ na aba Mapa
