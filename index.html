@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
@@ -1285,7 +1285,11 @@ async function scanDrivePhotos() {
         try { files = await apiList(ruaPath); } catch(e) { errors++; continue; }
         if (!files.success) continue;
 
-        var jsonFiles = (files.files || []).filter(function(f) { return f && typeof f === "string" && f.indexOf(".json") !== -1; });
+        var jsonFiles = (files.files || []).filter(function(f) {
+          if (!f) return false;
+          var name = typeof f === "string" ? f : (f.name || f.title || "");
+          return name && name.indexOf(".json") !== -1 && name !== "pontos_enviados.json";
+        });
         if (typeof jsonFiles[0] === "object") {
           jsonFiles = jsonFiles.map(function(f) { return f.name || f.title || String(f); });
         }
