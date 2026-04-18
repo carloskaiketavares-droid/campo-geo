@@ -164,14 +164,16 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
     <button class="tab-btn" data-t="foto" onclick="switchTab('foto')">📸 Foto</button>
     <button class="tab-btn" data-t="upload" onclick="switchTab('upload')">📤 Upload</button>
     <button class="tab-btn" data-t="enviar" onclick="switchTab('enviar')">🚀 Enviar</button>
+    <button id="tab-admin-btn" class="tab-btn" data-t="admin" onclick="switchTab('admin')" style="display:none">⚙️ Admin</button>
   </div>
 
   <div class="content">
     <div id="pane-mapa" class="pane active">
       <div id="map"></div>
       <button class="map-fab" onclick="loadSynced()">🔄 Sincronizar</button>
-      <button class="map-fab map-fab-kmz" onclick="triggerKMZ()" title="Carregar KMZ da área de atuação">📐 KMZ</button>
-      <button class="map-fab map-fab-clearkmz" onclick="clearKMZ()" title="Remover polígono">🗑️</button>
+      <!-- FABs KMZ visíveis APENAS para cargo=Admin (atalho rápido no mapa). Operador usa a aba ⚙️ Admin. -->
+      <button id="fab-kmz" class="map-fab map-fab-kmz" onclick="triggerKMZ()" title="Carregar KMZ local (admin — atalho)" style="display:none">📐 KMZ</button>
+      <button id="fab-kmz-clear" class="map-fab map-fab-clearkmz" onclick="clearKMZ()" title="Remover polígono (admin — atalho)" style="display:none">🗑️</button>
       <input id="kmz-input" type="file" accept=".kmz,.kml,application/vnd.google-earth.kmz,application/vnd.google-earth.kml+xml" style="display:none" onchange="onKMZSelected(event)">
     </div>
 
@@ -224,6 +226,46 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
           <div class="sec">Log de Operações</div>
           <div id="terminal" class="terminal">
             <div class="log-info"><span class="log-ts">[SISTEMA]</span> Campo GEO v4.2 pronto.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Aba ⚙️ Admin — apenas cargo=Admin. Publica o KMZ central que os operadores recebem. -->
+    <div id="pane-admin" class="pane">
+      <div class="env-inner">
+        <div class="card" style="border:1px solid #78350f;background:#1a0f06">
+          <div class="sec" style="color:#fbbf24">📐 Publicar Área de Atuação (KMZ)</div>
+          <div style="font-size:10px;color:#94a3b8;line-height:1.5;margin-bottom:8px">
+            O KMZ que você publicar aqui é distribuído <b>automaticamente</b> para todos os operadores ao selecionarem este projeto.
+            Se já houver um KMZ publicado, publicar de novo sobrescreve.
+          </div>
+          <div class="row"><span class="rk">Projeto</span>
+            <select id="adm-kmz-proj" style="flex:1;padding:6px;border-radius:6px;background:#0f1419;color:#fff;border:1px solid #334155;font-family:var(--mono);font-size:11px"></select>
+          </div>
+          <input id="adm-kmz-file" type="file" accept=".kmz,.kml,application/vnd.google-earth.kmz,application/vnd.google-earth.kml+xml" style="display:none" onchange="onAdminKMZFile(event)">
+          <button style="width:100%;padding:10px;border-radius:8px;border:1px solid #d97706;background:#78350f;color:#fde68a;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--mono);margin-top:8px" onclick="triggerAdminKMZ()">📁 SELECIONAR KMZ/KML LOCAL</button>
+          <div id="adm-kmz-filename" style="font-size:10px;color:#94a3b8;margin-top:6px;text-align:center">—</div>
+          <button id="adm-kmz-publish" style="width:100%;padding:12px;border-radius:8px;border:none;background:#16a34a;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--mono);margin-top:8px" onclick="publishAdminKMZ()" disabled>📤 PUBLICAR KMZ NO DRIVE</button>
+        </div>
+
+        <div class="card" style="margin-top:10px">
+          <div class="sec">Status KMZ por projeto</div>
+          <div id="adm-kmz-status" style="font-size:10px;color:#cbd5e1;line-height:1.7">
+            <span style="color:#64748b">Carregando…</span>
+          </div>
+          <button style="width:100%;padding:8px;border-radius:6px;border:1px solid #334155;background:transparent;color:#94a3b8;font-size:10px;cursor:pointer;font-family:var(--mono);margin-top:6px" onclick="refreshKMZStatus()">🔄 Atualizar status</button>
+        </div>
+
+        <div class="card" style="margin-top:10px">
+          <div class="sec">SOP resumido — como gerar o KMZ</div>
+          <div style="font-size:10px;color:#94a3b8;line-height:1.6">
+            1. Google Earth (web/desktop) → criar polígono da área de atuação.<br>
+            2. Salvar como <b>.kmz</b>.<br>
+            3. Guardar o original em <code>06_CAMPO_GEO/KMZ_FONTES/{projeto}/</code>.<br>
+            4. Voltar aqui → selecionar projeto → carregar arquivo → publicar.<br>
+            5. O operador vê o polígono ao abrir o projeto no app.<br>
+            <span style="color:#64748b">Detalhes: veja <code>MANUAL-KMZ.md</code> na pasta do projeto.</span>
           </div>
         </div>
       </div>
@@ -690,6 +732,155 @@ function onKMZSelected(ev) {
   ev.target.value = "";
 }
 
+// ── KMZ CENTRALIZADO (v5.1) ───────────────────────
+// O admin publica KMZ por projeto via backend. Operador recebe automaticamente ao
+// selecionar o projeto. localStorage continua como cache offline.
+
+function arrayBufferToBase64(buffer) {
+  var binary = "", bytes = new Uint8Array(buffer);
+  var chunk = 0x8000;
+  for (var i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
+function base64ToBlob(b64, type) {
+  var binary = atob(b64);
+  var bytes = new Uint8Array(binary.length);
+  for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: type || "application/vnd.google-earth.kmz" });
+}
+
+// Fetch remoto — chamado em startApp se usuário comum, ou manualmente pelo admin
+async function fetchRemoteKMZ() {
+  if (!S.project) return false;
+  try {
+    var res = await apiPost({ action: "getKMZ", project: S.project.folder });
+    if (!res || !res.success) {
+      if (res && res.error === "no_kmz") log("ℹ️ KMZ ainda não publicado pelo admin para este projeto", "info");
+      else log("⚠️ Erro ao buscar KMZ remoto: " + (res && res.error), "err");
+      return false;
+    }
+    var blob = base64ToBlob(res.content, "application/vnd.google-earth.kmz");
+    var fakeFile = new File([blob], "area_atuacao.kmz", { type: "application/vnd.google-earth.kmz" });
+    await loadKMZFile(fakeFile);
+    if (res.meta) log("↻ KMZ publicado por " + (res.meta.uploadedBy || "?") + " em " + (res.meta.uploadedAt || "?"), "info");
+    return true;
+  } catch (e) {
+    log("⚠️ Falha ao baixar KMZ remoto: " + e.message, "err");
+    return false;
+  }
+}
+
+// Admin: trigger file picker
+function triggerAdminKMZ() {
+  var inp = document.getElementById("adm-kmz-file");
+  if (inp) inp.click();
+}
+
+var S_admin = { selectedFile: null, selectedB64: null };
+
+async function onAdminKMZFile(ev) {
+  var f = ev.target.files[0];
+  ev.target.value = "";
+  if (!f) return;
+  document.getElementById("adm-kmz-filename").textContent = f.name + " (" + Math.round(f.size / 1024) + " KB)";
+  try {
+    var buf = await f.arrayBuffer();
+    S_admin.selectedFile = f;
+    S_admin.selectedB64 = arrayBufferToBase64(buf);
+    document.getElementById("adm-kmz-publish").disabled = false;
+    log("📁 Arquivo pronto para publicar: " + f.name, "info");
+  } catch (e) {
+    log("⚠️ Erro ao ler arquivo: " + e.message, "err");
+  }
+}
+
+async function publishAdminKMZ() {
+  var projSel = document.getElementById("adm-kmz-proj");
+  var projectFolder = projSel.value;
+  if (!projectFolder) { alert("Selecione um projeto."); return; }
+  if (!S_admin.selectedB64) { alert("Selecione um arquivo KMZ/KML primeiro."); return; }
+
+  var btn = document.getElementById("adm-kmz-publish");
+  btn.disabled = true; btn.textContent = "Publicando…";
+  try {
+    var res = await apiPost({
+      action: "saveKMZ",
+      project: projectFolder,
+      content: S_admin.selectedB64
+    });
+    if (!res.success) {
+      alert("❌ Falha: " + (res.detail || res.error));
+      log("❌ saveKMZ falhou: " + JSON.stringify(res), "err");
+    } else {
+      alert("✅ KMZ publicado para " + projectFolder + "!\n\nOperadores receberão automaticamente ao abrir o projeto.");
+      log("✅ KMZ publicado (" + projectFolder + ", " + res.size + " bytes base64)", "ok");
+      // Se é o projeto atual, aplicar no mapa já
+      if (S.project && S.project.folder === projectFolder) {
+        await fetchRemoteKMZ();
+      }
+      refreshKMZStatus();
+      S_admin.selectedFile = null;
+      S_admin.selectedB64 = null;
+      document.getElementById("adm-kmz-filename").textContent = "—";
+    }
+  } catch (e) {
+    alert("❌ Erro: " + e.message);
+  } finally {
+    btn.textContent = "📤 PUBLICAR KMZ NO DRIVE";
+    btn.disabled = !S_admin.selectedB64;
+  }
+}
+
+async function refreshKMZStatus() {
+  var box = document.getElementById("adm-kmz-status");
+  if (!box) return;
+  box.innerHTML = "<span style='color:#64748b'>Carregando…</span>";
+  try {
+    var res = await apiPost({
+      action: "statusKMZ",
+      projects: PROJECTS.map(function(p){ return p.folder; })
+    });
+    if (!res.success) { box.textContent = "❌ " + (res.error || "erro"); return; }
+    var lines = res.projects.map(function(info) {
+      var proj = PROJECTS.find(function(p){ return p.folder === info.project; });
+      var name = proj ? proj.name : info.project;
+      if (!info.published) {
+        return "⚠️ <b>" + name + "</b> — <span style='color:#f87171'>sem KMZ</span>";
+      }
+      var when = info.updated ? info.updated.split("T")[0] : "?";
+      var who = info.meta && info.meta.uploadedBy ? info.meta.uploadedBy : "?";
+      return "✅ <b>" + name + "</b> — <span style='color:#34d399'>publicado " + when + "</span> por " + who;
+    });
+    box.innerHTML = lines.join("<br>");
+  } catch (e) {
+    box.textContent = "❌ " + e.message;
+  }
+}
+
+// Popular dropdown de projetos na aba Admin e atualizar status ao abrir
+function initAdminPane() {
+  var sel = document.getElementById("adm-kmz-proj");
+  if (!sel) return;
+  sel.innerHTML = PROJECTS.map(function(p){
+    return '<option value="' + p.folder + '">' + p.name + '</option>';
+  }).join("");
+  if (S.project) sel.value = S.project.folder;
+}
+
+function revealAdminUI() {
+  var isAdm = S.authUser && String(S.authUser.cargo || "").toLowerCase() === "admin";
+  var tabBtn = document.getElementById("tab-admin-btn");
+  var fabKmz = document.getElementById("fab-kmz");
+  var fabClr = document.getElementById("fab-kmz-clear");
+  if (tabBtn) tabBtn.style.display = isAdm ? "" : "none";
+  if (fabKmz) fabKmz.style.display = isAdm ? "" : "none";
+  if (fabClr) fabClr.style.display = isAdm ? "" : "none";
+  if (isAdm) initAdminPane();
+}
+
 function promoteMarker(id) {
   if (ML.queue[id]) { ML.queue[id].setIcon(ICO_SENT); ML.sent[id] = ML.queue[id]; delete ML.queue[id]; }
 }
@@ -1014,6 +1205,7 @@ function switchTab(tab) {
   document.querySelector("[data-t='" + tab + "']").classList.add("active");
   if (tab === "mapa") setTimeout(function() { if (S.map) S.map.invalidateSize(); }, 120);
   if (tab === "upload" || tab === "enviar") { updateQueueUI(); updateStats(); }
+  if (tab === "admin") { initAdminPane(); refreshKMZStatus(); }
 }
 
 function saveGeoKey() {
@@ -1241,13 +1433,16 @@ function startApp() {
   if (k) document.getElementById("geo-key").value = k;
   loadWatermarkLogo(); // v4.2: pré-carrega logo para watermark
   initMap(); startGPS(); loadSentLocal(); updateStats();
-  restoreKMZ(); // v4.2: restaura polígono KMZ salvo se houver
+  restoreKMZ(); // v4.2: cache local primeiro (para resposta imediata offline)
   // Auto-sync após 3s e depois a cada 30s
   setTimeout(function() { loadSynced(); }, 3000);
   startAutoSync();
   log("Projeto: " + S.project.name + " | Op: " + S.operator, "ok");
   log("Auto-sync ativo (30s). Pontos compartilhados entre dispositivos.", "info");
   if (S.authUser) log("🔐 Login: " + S.authUser.email, "ok");
+  revealAdminUI(); // v5.1: mostra aba Admin + FABs se cargo=Admin
+  // v5.1: busca KMZ central publicado (sobrescreve o cache local se houver versão remota)
+  setTimeout(function(){ fetchRemoteKMZ(); }, 500);
 }
 
 // ── AUTENTICAÇÃO USUÁRIO/SENHA (v5.0) ────────────
