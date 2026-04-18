@@ -6,13 +6,12 @@
 <meta name="theme-color" content="#0a0e1a">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
-<title>Campo GEO v4.2</title>
+<title>Campo GEO v5.0</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<!-- v4.2: exifr (EXIF robusto), JSZip (KMZ), Google Sign-In -->
+<!-- v5.0: exifr (EXIF robusto), JSZip (KMZ). Autenticação via usuário/senha (Apps Script). -->
 <script src="https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -117,16 +116,18 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 <div id="setup">
   <div class="s-logo"><img src="logo.svg" alt="Brasil Limpo"></div>
   <div class="s-title">CAMPO GEO</div>
-  <div class="s-sub">Levantamento Fotográfico Georreferenciado · v4.2</div>
+  <div class="s-sub">Levantamento Fotográfico Georreferenciado · v5.0</div>
   <div class="s-card">
     <div id="auth-section">
-      <div class="s-label">🔐 Autenticação Google</div>
+      <div class="s-label">🔐 Autenticação</div>
       <div id="auth-status" style="padding:10px;border-radius:8px;background:var(--bg);border:1px solid var(--border);font-size:11px;color:var(--muted);margin-bottom:12px">
-        Não autenticado
+        Informe usuário e senha
       </div>
-      <div id="google-signin-btn" style="display:flex;justify-content:center;margin-bottom:14px"></div>
-      <div id="auth-gate-msg" style="font-size:10px;color:var(--muted);line-height:1.5;margin-bottom:14px">
-        Faça login com sua conta Google para continuar.
+      <input id="auth-username" class="s-input" type="text" placeholder="usuário" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false">
+      <input id="auth-password" class="s-input" type="password" placeholder="senha" autocomplete="current-password">
+      <button id="auth-submit" onclick="submitLogin()" style="width:100%;padding:12px;border-radius:8px;border:none;background:linear-gradient(135deg,#f59e0b,#ef4444);color:#fff;font-size:13px;font-weight:700;font-family:var(--sans);cursor:pointer;margin-bottom:8px">ENTRAR</button>
+      <div id="auth-gate-msg" style="font-size:10px;color:var(--muted);line-height:1.5;margin-bottom:4px">
+        Suas credenciais foram criadas pelo gestor do projeto. Em caso de dúvida, contate-o.
       </div>
     </div>
     <div id="operator-section" style="display:none">
@@ -242,7 +243,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 //  6. Logo Brasil Limpo na home
 // ════════════════════════════════════════════════════════════
 
-var API_URL = "https://script.google.com/macros/s/AKfycbx8BehYWILdRbQi8mCv4ImGQz1gmD3I7DFESABkaiT-goB1-b-dcDL1IuqjxlDu56QM/exec";
+var API_URL = "https://script.google.com/macros/s/AKfycbzG3AffgfG94pKQbycDRkAJoQ1QPaZLcdv0T7iB7k7w7uJZW_j9C7kxSvICGACdP4f3uQ/exec";
 
 var PROJECTS = [
   { id: "rio-das-ostras", name: "Rio das Ostras / RJ", folder: "RIO_DAS_OSTRAS_RJ" },
@@ -716,9 +717,7 @@ async function loadSynced() {
   try {
     var path = "04_PROJETOS/" + S.project.folder + "/cadernos_campo";
     var file = "pontos_enviados.json";
-    var url = API_URL + "?action=read&path=" + encodeURIComponent(path) + "&fileName=" + encodeURIComponent(file);
-    var r = await fetch(url, { redirect: "follow" });
-    var d = await r.json();
+    var d = await apiRead(path, file);
     if (!d.success || !d.content) { log("Nenhum ponto no Drive.", "info"); return; }
     var pts = JSON.parse(d.content);
     var added = 0;
@@ -737,15 +736,34 @@ function startAutoSync() {
   S.syncTimer = setInterval(function() { loadSynced(); }, SYNC_INTERVAL);
 }
 
-// ── API WRITE ────────────────────────────────
-async function apiWrite(path, fileName, content) {
+// ── API (v5.0: token em todas as chamadas) ───────
+function getAuthToken() { try { return localStorage.getItem("cg_auth_token") || ""; } catch(e) { return ""; } }
+
+async function apiPost(payload) {
+  payload.token = getAuthToken();
   var r = await fetch(API_URL, {
     method: "POST",
     headers: { "Content-Type": "text/plain" },
-    body: JSON.stringify({ action: "write", path: path, fileName: fileName, content: content }),
+    body: JSON.stringify(payload),
     redirect: "follow"
   });
-  return r.json();
+  var res = await r.json();
+  if (res && res.error === "auth") {
+    alert("Sessão expirada. Faça login novamente.");
+    signOut();
+    throw new Error("auth_expired");
+  }
+  return res;
+}
+
+async function apiWrite(path, fileName, content) {
+  return apiPost({ action: "write", path: path, fileName: fileName, content: content });
+}
+async function apiRead(path, fileName) {
+  return apiPost({ action: "read", path: path, fileName: fileName });
+}
+async function apiList(path) {
+  return apiPost({ action: "list", path: path });
 }
 
 // ── CAPTURA ──────────────────────────────────
@@ -1003,17 +1021,7 @@ function saveGeoKey() {
   if (v) { localStorage.setItem("geocodeKey", v); log("Chave salva.", "ok"); }
 }
 
-async function apiList(path) {
-  var url = API_URL + "?action=list&path=" + encodeURIComponent(path);
-  var r = await fetch(url, { redirect: "follow" });
-  return r.json();
-}
-
-async function apiRead(path, fileName) {
-  var url = API_URL + "?action=read&path=" + encodeURIComponent(path) + "&fileName=" + encodeURIComponent(fileName);
-  var r = await fetch(url, { redirect: "follow" });
-  return r.json();
-}
+// apiList e apiRead foram unificadas em apiPost() no topo do script (v5.0) — nada a fazer aqui.
 
 async function scanDrivePhotos() {
   if (!S.project) { alert("Selecione um projeto primeiro."); return; }
@@ -1242,172 +1250,113 @@ function startApp() {
   if (S.authUser) log("🔐 Login: " + S.authUser.email, "ok");
 }
 
-// ── GOOGLE SIGN-IN (v4.2) ────────────────────
-// Gate de autenticação — app só libera operador/projeto após login Google.
-// Client ID é configurável via localStorage (primeira vez o admin cola a chave).
-// Allowlist de e-mails via localStorage "cg_auth_allowlist" (separados por vírgula, vazio = libera qualquer Google account).
+// ── AUTENTICAÇÃO USUÁRIO/SENHA (v5.0) ────────────
+// Gate de autenticação: usuário/senha cadastrados pelo gestor na planilha do Apps Script.
+// POST {action:"login", username, password} → backend devolve token HMAC assinado (TTL 30 dias).
+// Token persiste em localStorage (cg_auth_token + cg_auth_user_v5) e é anexado a cada apiPost.
 
-var GSI_STATE = { initialized: false };
+var AUTH_LS_TOKEN = "cg_auth_token";
+var AUTH_LS_USER  = "cg_auth_user_v5";
 
-function decodeJwt(token) {
-  try {
-    var payload = token.split(".")[1];
-    var json = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
-    return JSON.parse(decodeURIComponent(escape(json)));
-  } catch(e) { return null; }
+function setAuthStatus(html, color) {
+  var el = document.getElementById("auth-status");
+  if (!el) return;
+  el.innerHTML = html;
+  el.style.color = color || "var(--muted)";
 }
 
-function handleCredentialResponse(response) {
-  if (!response || !response.credential) return;
-  var user = decodeJwt(response.credential);
-  if (!user) { log("❌ JWT inválido", "err"); return; }
+async function submitLogin() {
+  var u = document.getElementById("auth-username").value.trim();
+  var p = document.getElementById("auth-password").value;
+  if (!u || !p) { setAuthStatus("Preencha usuário e senha.", "var(--red)"); return; }
 
-  // Verifica allowlist (se configurada)
-  var allowlist = (localStorage.getItem("cg_auth_allowlist") || "").split(",").map(function(e){ return e.trim().toLowerCase(); }).filter(Boolean);
-  if (allowlist.length > 0 && allowlist.indexOf((user.email || "").toLowerCase()) === -1) {
-    document.getElementById("auth-status").innerHTML = '❌ E-mail <b>' + user.email + '</b> não autorizado. Contate o admin.';
-    document.getElementById("auth-status").style.color = "var(--red)";
-    return;
+  var btn = document.getElementById("auth-submit");
+  btn.disabled = true; btn.textContent = "Entrando...";
+  setAuthStatus("Autenticando…", "var(--muted)");
+
+  try {
+    var r = await fetch(API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain" },
+      body: JSON.stringify({ action: "login", username: u, password: p }),
+      redirect: "follow"
+    });
+    var res = await r.json();
+    if (!res.success) {
+      var msg = "❌ " + (res.error === "bad_credentials" ? "Usuário ou senha incorretos" :
+                        res.error === "inactive"        ? "Conta desativada — contate o gestor" :
+                        res.error === "no_users"        ? "Planilha de usuários vazia — contate o admin" :
+                        "Erro: " + (res.error || "desconhecido"));
+      setAuthStatus(msg, "var(--red)");
+      btn.disabled = false; btn.textContent = "ENTRAR";
+      return;
+    }
+    try {
+      localStorage.setItem(AUTH_LS_TOKEN, res.token);
+      localStorage.setItem(AUTH_LS_USER, JSON.stringify(res.user));
+    } catch(e) {}
+    bootAuthSuccess(res.user);
+  } catch(e) {
+    setAuthStatus("❌ Erro de rede: " + e.message, "var(--red)");
+    btn.disabled = false; btn.textContent = "ENTRAR";
   }
+}
 
+function bootAuthSuccess(user) {
   S.authUser = {
-    email: user.email,
-    name: user.name,
-    picture: user.picture,
-    sub: user.sub,
-    iat: user.iat
+    username: user.username,
+    name: user.nome || user.username,
+    email: user.username, // alias para código legado
+    cargo: user.cargo || ""
   };
-  try { sessionStorage.setItem("cg_auth_user", JSON.stringify(S.authUser)); } catch(e) {}
-
-  document.getElementById("auth-status").innerHTML =
-    '<div style="display:flex;align-items:center;gap:8px">' +
-    (user.picture ? '<img src="' + user.picture + '" style="width:28px;height:28px;border-radius:50%">' : '') +
-    '<div><div style="color:#fff;font-weight:600">' + (user.name || user.email) + '</div>' +
-    '<div style="font-size:9px">' + user.email + '</div></div></div>';
-  document.getElementById("auth-status").style.color = "var(--green)";
-  document.getElementById("auth-gate-msg").style.display = "none";
-  document.getElementById("google-signin-btn").style.display = "none";
+  setAuthStatus(
+    '<div><div style="color:#fff;font-weight:600">' + (user.nome || user.username) + '</div>' +
+    '<div style="font-size:9px">' + (user.cargo || user.username) + '</div></div>',
+    "var(--green)"
+  );
+  var ids = ["auth-username","auth-password","auth-submit","auth-gate-msg"];
+  ids.forEach(function(id){ var el = document.getElementById(id); if (el) el.style.display = "none"; });
   document.getElementById("operator-section").style.display = "block";
 
-  // Pré-preenche nome do operador
   var opInp = document.getElementById("op-input");
   if (opInp && !opInp.value) {
-    opInp.value = user.name || user.email.split("@")[0];
+    opInp.value = user.nome || user.username;
     opInp.dispatchEvent(new Event("input"));
   }
 }
 
 function signOut() {
   S.authUser = null;
-  try { sessionStorage.removeItem("cg_auth_user"); } catch(e) {}
-  if (window.google && google.accounts && google.accounts.id) {
-    try { google.accounts.id.disableAutoSelect(); } catch(e) {}
-  }
+  try { localStorage.removeItem(AUTH_LS_TOKEN); localStorage.removeItem(AUTH_LS_USER); } catch(e) {}
   location.reload();
 }
 
-function promptGoogleConfig() {
-  var current = localStorage.getItem("cg_gsi_client_id") || "";
-  var nv = prompt(
-    "Google OAuth 2.0 Client ID\n\n" +
-    "Como obter:\n" +
-    "1. Acesse console.cloud.google.com → APIs & Services → Credentials\n" +
-    "2. Create Credentials → OAuth client ID → Web application\n" +
-    "3. Authorized JavaScript origins: https://carloskaiketavares-droid.github.io\n" +
-    "4. Copie o Client ID e cole aqui:",
-    current
-  );
-  if (nv != null && nv.trim()) {
-    localStorage.setItem("cg_gsi_client_id", nv.trim());
-    location.reload();
-  }
-}
+function initLoginForm() {
+  // Enter submete
+  ["auth-username","auth-password"].forEach(function(id){
+    var el = document.getElementById(id);
+    if (el) el.addEventListener("keypress", function(ev){ if (ev.key === "Enter") submitLogin(); });
+  });
 
-function promptAllowlist() {
-  var current = localStorage.getItem("cg_auth_allowlist") || "";
-  var nv = prompt(
-    "Allowlist de e-mails (separados por vírgula)\n\n" +
-    "Exemplo: kaike@brasillimpo.com, operador1@gmail.com\n" +
-    "(deixe vazio para liberar qualquer conta Google)",
-    current
-  );
-  if (nv != null) {
-    localStorage.setItem("cg_auth_allowlist", nv.trim());
-    alert("Allowlist salva. Recarregando…");
-    location.reload();
-  }
-}
-
-function initGoogleSignIn() {
-  if (GSI_STATE.initialized) return;
-  var clientId = localStorage.getItem("cg_gsi_client_id") || "";
-
-  // Se já tem sessão válida neste navegador, restaura sem pedir login de novo
+  // Restaura sessão se token ainda válido (verifica no servidor)
   try {
-    var saved = sessionStorage.getItem("cg_auth_user");
-    if (saved) {
-      S.authUser = JSON.parse(saved);
-      document.getElementById("auth-status").innerHTML =
-        '<div style="display:flex;align-items:center;gap:8px">' +
-        (S.authUser.picture ? '<img src="' + S.authUser.picture + '" style="width:28px;height:28px;border-radius:50%">' : '') +
-        '<div><div style="color:#fff;font-weight:600">' + (S.authUser.name || S.authUser.email) + '</div>' +
-        '<div style="font-size:9px">' + S.authUser.email + '</div></div></div>';
-      document.getElementById("auth-status").style.color = "var(--green)";
-      document.getElementById("auth-gate-msg").style.display = "none";
-      document.getElementById("google-signin-btn").style.display = "none";
-      document.getElementById("operator-section").style.display = "block";
-      var opInp = document.getElementById("op-input");
-      if (opInp && !opInp.value) {
-        opInp.value = S.authUser.name || S.authUser.email.split("@")[0];
-        opInp.dispatchEvent(new Event("input"));
-      }
-      return;
-    }
+    var token = localStorage.getItem(AUTH_LS_TOKEN);
+    var userJson = localStorage.getItem(AUTH_LS_USER);
+    if (!token || !userJson) return;
+    var user = JSON.parse(userJson);
+    fetch(API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain" },
+      body: JSON.stringify({ action: "whoami", token: token }),
+      redirect: "follow"
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(res){
+      if (res.success) bootAuthSuccess(user);
+      else { try { localStorage.removeItem(AUTH_LS_TOKEN); localStorage.removeItem(AUTH_LS_USER); } catch(e){} }
+    })
+    .catch(function(){}); // se offline, mantém form de login visível
   } catch(e) {}
-
-  if (!clientId) {
-    document.getElementById("auth-status").innerHTML =
-      '⚠️ <b>Client ID não configurado</b><br><small>Admin: clique abaixo para configurar</small>';
-    document.getElementById("google-signin-btn").innerHTML =
-      '<button onclick="promptGoogleConfig()" style="padding:10px 16px;background:var(--accent);color:#000;border:none;border-radius:6px;font-weight:700;cursor:pointer">⚙️ Configurar Google OAuth</button>' +
-      '<button onclick="promptAllowlist()" style="margin-top:8px;padding:8px 12px;background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:6px;font-size:10px;cursor:pointer;width:100%">Gerenciar allowlist de e-mails</button>';
-    return;
-  }
-
-  // Aguarda a biblioteca google.accounts carregar
-  var tries = 0;
-  function tryInit() {
-    if (!(window.google && google.accounts && google.accounts.id)) {
-      if (tries++ < 20) { setTimeout(tryInit, 250); return; }
-      document.getElementById("auth-status").innerHTML = '❌ Biblioteca Google Sign-In não carregou. Sem internet?';
-      document.getElementById("auth-status").style.color = "var(--red)";
-      return;
-    }
-    try {
-      google.accounts.id.initialize({
-        client_id: clientId,
-        callback: handleCredentialResponse,
-        auto_select: false,
-        cancel_on_tap_outside: false
-      });
-      google.accounts.id.renderButton(
-        document.getElementById("google-signin-btn"),
-        { theme: "filled_black", size: "large", type: "standard", shape: "rectangular", text: "signin_with", logo_alignment: "left", width: 280 }
-      );
-      GSI_STATE.initialized = true;
-      // Botões admin discretos
-      var footer = document.createElement("div");
-      footer.style.cssText = "text-align:center;margin-top:14px;font-size:10px";
-      footer.innerHTML =
-        '<a href="#" onclick="promptGoogleConfig();return false" style="color:var(--muted);margin-right:10px">Reconfigurar OAuth</a>' +
-        '<a href="#" onclick="promptAllowlist();return false" style="color:var(--muted)">Allowlist</a>';
-      document.getElementById("google-signin-btn").appendChild(footer);
-    } catch(err) {
-      document.getElementById("auth-status").innerHTML = '❌ Erro init GSI: ' + err.message;
-      document.getElementById("auth-status").style.color = "var(--red)";
-    }
-  }
-  tryInit();
 }
 
 // ── ENCERRAR PROJETO (v4.2) ──────────────────
@@ -1449,7 +1398,7 @@ function isProjectClosed(folder) {
 }
 
 renderProjects();
-initGoogleSignIn();
+initLoginForm();
 </script>
 </body>
 </html>
