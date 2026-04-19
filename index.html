@@ -6,10 +6,10 @@
 <meta name="theme-color" content="#0a0e1a">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
-<title>Campo GEO v5.2</title>
+<title>Campo GEO v5.3</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<!-- v5.2: geo-fence não bloqueante (warn + flag fora_area). Mantém v5.1: exifr, JSZip, auth via Apps Script, KMZ central. -->
+<!-- v5.3: geo-fence não bloqueante (warn + flag fora_area). Mantém v5.1: exifr, JSZip, auth via Apps Script, KMZ central. -->
 <script src="https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <style>
@@ -225,7 +225,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
         <div>
           <div class="sec">Log de Operações</div>
           <div id="terminal" class="terminal">
-            <div class="log-info"><span class="log-ts">[SISTEMA]</span> Campo GEO v5.2 pronto.</div>
+            <div class="log-info"><span class="log-ts">[SISTEMA]</span> Campo GEO v5.3 pronto.</div>
           </div>
         </div>
       </div>
@@ -1258,6 +1258,14 @@ async function scanDrivePhotos() {
   log("🔍 Iniciando varredura do Drive...", "info");
   log("📂 Base: " + basePath, "info");
 
+  // v5.3: reset local state + preparar incrementais
+  S.sentPts = [];
+  for (var _mid in ML.sent) { if (S.map) S.map.removeLayer(ML.sent[_mid]); }
+  ML.sent = {};
+  updateStats();
+  var scanFirstFit = false;
+  var CONCURRENCY = 10;
+
   try {
     // 1. Listar bairros
     var bairros = await apiList(basePath);
@@ -1283,25 +1291,43 @@ async function scanDrivePhotos() {
         return name && name.indexOf(".json") !== -1 && name !== "pontos_enviados.json"; 
       });
 
-      // Arquivos direto no bairro (sem subpasta de rua)
-      for (var fi = 0; fi < ruaFiles.length; fi++) {
-        try {
-          var fname = typeof ruaFiles[fi] === "object" ? (ruaFiles[fi].name || ruaFiles[fi].title || String(ruaFiles[fi])) : String(ruaFiles[fi]);
-          if (fname.indexOf(".json") === -1 || fname === "pontos_enviados.json") continue;
-          var data = await apiRead(bairroPath, fname);
-          if (data.success && data.content) {
-            var photo = JSON.parse(data.content);
-            recoveredPts.push({
-              id: photo.id || fname.replace(".json", ""),
-              name: photo.name || fname,
-              lat: photo.lat, lng: photo.lng, acc: photo.acc,
-              timestamp: photo.timestamp,
-              address: photo.address || { bairro: bairro, rua: "Sem_rua" },
-              operator: photo.operator || "desconhecido"
-            });
+      // v5.3: paralelizar leitura direto no bairro (sem subpasta)
+      var bairroFnames = ruaFiles.map(function(f){
+        return typeof f === "object" ? (f.name || f.title || String(f)) : String(f);
+      }).filter(function(n){ return n && n.indexOf(".json") !== -1 && n !== "pontos_enviados.json"; });
+      for (var bsB = 0; bsB < bairroFnames.length; bsB += CONCURRENCY) {
+        var sliceB = bairroFnames.slice(bsB, bsB + CONCURRENCY);
+        var resultsB = await Promise.all(sliceB.map(function(nm){
+          return apiRead(bairroPath, nm).then(function(d){
+            if (d && d.success && d.content) {
+              try {
+                var p = JSON.parse(d.content);
+                return {
+                  id: p.id || nm.replace(".json", ""),
+                  name: p.name || nm,
+                  lat: p.lat, lng: p.lng, acc: p.acc,
+                  timestamp: p.timestamp,
+                  address: p.address || { bairro: bairro, rua: "Sem_rua" },
+                  operator: p.operator || "desconhecido",
+                  fora_area: p.fora_area || false
+                };
+              } catch(e) { return null; }
+            }
+            return null;
+          }).catch(function(){ return null; });
+        }));
+        for (var kkB = 0; kkB < resultsB.length; kkB++) {
+          if (resultsB[kkB]) {
+            recoveredPts.push(resultsB[kkB]);
             totalFiles++;
-          }
-        } catch(e) { errors++; }
+            if (resultsB[kkB].lat != null && resultsB[kkB].lng != null) {
+              S.sentPts.push(resultsB[kkB]);
+              addMarker(resultsB[kkB], "sent");
+            }
+          } else { errors++; }
+        }
+        updateStats();
+        if (!scanFirstFit && S.sentPts.length > 0) { scanFirstFit = true; fitAllMarkers(); }
       }
 
       // 3. Entrar em cada rua
@@ -1323,26 +1349,44 @@ async function scanDrivePhotos() {
         }
         log("  📂 " + bairro + "/" + rua + ": " + jsonFiles.length + " foto(s)", "info");
 
-        // 4. Ler cada arquivo JSON
-        for (var ji = 0; ji < jsonFiles.length; ji++) {
-          var jname = typeof jsonFiles[ji] === "object" ? (jsonFiles[ji].name || String(jsonFiles[ji])) : String(jsonFiles[ji]);
-          if (jname.indexOf(".json") === -1) continue;
-          try {
-            var fData = await apiRead(ruaPath, jname);
-            if (fData.success && fData.content) {
-              var p = JSON.parse(fData.content);
-              recoveredPts.push({
-                id: p.id || jname.replace(".json", ""),
-                name: p.name || jname,
-                lat: p.lat, lng: p.lng, acc: p.acc,
-                timestamp: p.timestamp,
-                address: p.address || { bairro: bairro, rua: rua },
-                operator: p.operator || "desconhecido"
-              });
+        // 4. v5.3: Ler JSONs em paralelo (batches) + atualizar UI incrementalmente
+        var ruaFnames = jsonFiles.map(function(f){
+          return typeof f === "object" ? (f.name || String(f)) : String(f);
+        }).filter(function(n){ return n && n.indexOf(".json") !== -1; });
+        for (var bs = 0; bs < ruaFnames.length; bs += CONCURRENCY) {
+          var slice = ruaFnames.slice(bs, bs + CONCURRENCY);
+          var results = await Promise.all(slice.map(function(nm){
+            return apiRead(ruaPath, nm).then(function(d){
+              if (d && d.success && d.content) {
+                try {
+                  var p = JSON.parse(d.content);
+                  return {
+                    id: p.id || nm.replace(".json", ""),
+                    name: p.name || nm,
+                    lat: p.lat, lng: p.lng, acc: p.acc,
+                    timestamp: p.timestamp,
+                    address: p.address || { bairro: bairro, rua: rua },
+                    operator: p.operator || "desconhecido",
+                    fora_area: p.fora_area || false
+                  };
+                } catch(e) { return null; }
+              }
+              return null;
+            }).catch(function(){ return null; });
+          }));
+          for (var kk = 0; kk < results.length; kk++) {
+            if (results[kk]) {
+              recoveredPts.push(results[kk]);
               totalFiles++;
+              if (results[kk].lat != null && results[kk].lng != null) {
+                S.sentPts.push(results[kk]);
+                addMarker(results[kk], "sent");
+              }
               if (totalFiles % 10 === 0) log("  ... " + totalFiles + " fotos lidas", "info");
-            }
-          } catch(e) { errors++; }
+            } else { errors++; }
+          }
+          updateStats();
+          if (!scanFirstFit && S.sentPts.length > 0) { scanFirstFit = true; fitAllMarkers(); }
         }
       }
     }
@@ -1364,17 +1408,10 @@ async function scanDrivePhotos() {
       log("❌ Erro ao salvar índice: " + JSON.stringify(saveRes), "err");
     }
 
-    // 6. Atualizar estado local
+    // 6. v5.3: S.sentPts e marcadores já foram atualizados incrementalmente
     S.sentPts = recoveredPts;
     saveSentLocal();
-
-    // Limpar marcadores antigos e recriar
-    for (var id in ML.sent) { if (S.map) S.map.removeLayer(ML.sent[id]); }
-    ML.sent = {};
-    recoveredPts.forEach(function(pt) {
-      if (pt.lat != null && pt.lng != null) addMarker(pt, "sent");
-    });
-    if (recoveredPts.length > 0) fitAllMarkers(); // v5.2
+    if (recoveredPts.length > 0) fitAllMarkers();
     updateStats();
 
     log("🗺️ " + recoveredPts.length + " pontos restaurados no mapa!", "ok");
