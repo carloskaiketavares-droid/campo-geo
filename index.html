@@ -6,10 +6,10 @@
 <meta name="theme-color" content="#0a0e1a">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
-<title>Campo GEO v5.4</title>
+<title>Campo GEO v5.6</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<!-- v5.4: geo-fence não bloqueante (warn + flag fora_area). Mantém v5.1: exifr, JSZip, auth via Apps Script, KMZ central. -->
+<!-- v5.6: MULTI-KMZ — operador pode carregar vários KMZ/KML no mesmo mapa (append). FAB abre seletor múltiplo; KMZ central admin preserva KMZs locais adicionais. Mantém v5.4: geo-fence não bloqueante; v5.1: exifr, JSZip, auth via Apps Script. -->
 <script src="https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <style>
@@ -116,7 +116,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 <div id="setup">
   <div class="s-logo"><img src="logo.svg" alt="Brasil Limpo"></div>
   <div class="s-title">CAMPO GEO</div>
-  <div class="s-sub">Levantamento Fotográfico Georreferenciado · v5.0</div>
+  <div class="s-sub">Levantamento Fotográfico Georreferenciado · v5.6</div>
   <div class="s-card">
     <div id="auth-section">
       <div class="s-label">🔐 Autenticação</div>
@@ -146,7 +146,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
     <div class="hd-left">
       <div class="hd-logo"><img src="logo.svg" alt="BL"></div>
       <div>
-        <div class="hd-title">CAMPO GEO <span style="font-size:9px;color:var(--muted)">v5.2</span></div>
+        <div class="hd-title">CAMPO GEO <span style="font-size:9px;color:var(--muted)">v5.6</span></div>
         <div class="hd-sub" id="hd-sub">—</div>
       </div>
     </div>
@@ -172,9 +172,9 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
       <div id="map"></div>
       <button class="map-fab" onclick="loadSynced()">🔄 Sincronizar</button>
       <!-- FABs KMZ visíveis APENAS para cargo=Admin (atalho rápido no mapa). Operador usa a aba ⚙️ Admin. -->
-      <button id="fab-kmz" class="map-fab map-fab-kmz" onclick="triggerKMZ()" title="Carregar KMZ local (admin — atalho)" style="display:none">📐 KMZ</button>
-      <button id="fab-kmz-clear" class="map-fab map-fab-clearkmz" onclick="clearKMZ()" title="Remover polígono (admin — atalho)" style="display:none">🗑️</button>
-      <input id="kmz-input" type="file" accept=".kmz,.kml,application/vnd.google-earth.kmz,application/vnd.google-earth.kml+xml" style="display:none" onchange="onKMZSelected(event)">
+      <button id="fab-kmz" class="map-fab map-fab-kmz" onclick="triggerKMZ()" title="Adicionar KMZ/KML ao mapa — pode selecionar múltiplos (admin)" style="display:none">📐 KMZ+</button>
+      <button id="fab-kmz-clear" class="map-fab map-fab-clearkmz" onclick="clearKMZ()" title="Remover TODOS os polígonos carregados (admin)" style="display:none">🗑️</button>
+      <input id="kmz-input" type="file" multiple accept=".kmz,.kml,application/vnd.google-earth.kmz,application/vnd.google-earth.kml+xml" style="display:none" onchange="onKMZSelected(event)">
     </div>
 
     <div id="pane-foto" class="pane">
@@ -225,7 +225,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
         <div>
           <div class="sec">Log de Operações</div>
           <div id="terminal" class="terminal">
-            <div class="log-info"><span class="log-ts">[SISTEMA]</span> Campo GEO v5.4 pronto.</div>
+            <div class="log-info"><span class="log-ts">[SISTEMA]</span> Campo GEO v5.6 pronto.</div>
           </div>
         </div>
       </div>
@@ -607,10 +607,32 @@ function addMarker(pt, type) {
   else ML.queue[pt.id] = marker;
 }
 
-// ── KMZ / KML LOADER (v4.2) ──────────────────
-// Lê arquivo KMZ (zip com KML dentro) ou KML puro, extrai polígono de atuação,
-// desenha no mapa e limita captura às coordenadas dentro da área.
-async function loadKMZFile(file) {
+// ── KMZ / KML LOADER (v5.6 — MULTI-KMZ) ──────────────────
+// Lê arquivo KMZ (zip com KML dentro) ou KML puro, extrai polígono(s),
+// desenha no mapa e valida captura por geo-fence (contra TODOS os polígonos).
+// v5.6: suporte a MÚLTIPLOS KMZ no mesmo mapa (modo append).
+//   - opts.append = true  → ACUMULA polígonos (FAB local, múltipla seleção)
+//   - opts.append = false → SUBSTITUI tudo (fetchRemoteKMZ, comportamento legado)
+//   - opts.sourceName     → nome amigável para tooltip/log (default: file.name)
+//   - opts.fitBounds      → ajusta viewport ao final (default: true)
+// Paleta rotativa de cores por source para distinguir áreas visualmente.
+var KMZ_PALETTE = [
+  "#f59e0b", // âmbar (padrão — admin central)
+  "#3b82f6", // azul
+  "#10b981", // verde esmeralda
+  "#ec4899", // rosa
+  "#8b5cf6", // violeta
+  "#06b6d4", // ciano
+  "#f97316", // laranja
+  "#84cc16"  // lima
+];
+
+async function loadKMZFile(file, opts) {
+  opts = opts || {};
+  var append = !!opts.append;
+  var sourceName = opts.sourceName || file.name || "KMZ sem nome";
+  var doFit = (opts.fitBounds !== false);
+
   if (typeof JSZip === "undefined") {
     log("⚠️ JSZip não carregou", "err"); return;
   }
@@ -624,43 +646,69 @@ async function loadKMZFile(file) {
       zip.forEach(function(path, entry) {
         if (!kmlFile && path.toLowerCase().endsWith(".kml")) kmlFile = entry;
       });
-      if (!kmlFile) { log("⚠️ KMZ sem KML dentro", "err"); return; }
+      if (!kmlFile) { log("⚠️ " + sourceName + ": KMZ sem KML dentro", "err"); return; }
       kmlText = await kmlFile.async("string");
     } else if (name.endsWith(".kml")) {
       kmlText = await file.text();
     } else {
-      log("⚠️ Arquivo deve ser .kmz ou .kml", "err"); return;
+      log("⚠️ " + sourceName + ": arquivo deve ser .kmz ou .kml", "err"); return;
     }
 
     var polys = parseKMLPolygons(kmlText);
     if (polys.length === 0) {
-      log("⚠️ Nenhum polígono encontrado no KML", "err"); return;
+      log("⚠️ " + sourceName + ": nenhum polígono encontrado", "err"); return;
     }
 
-    // usa o PRIMEIRO polígono como área de atuação (mais comum)
-    // polys[0] é um array de [lat, lng]
-    S.kmzPolygon = polys[0];
-    S.kmzAllPolygons = polys;
+    // --- MODO ACUMULAR ou SUBSTITUIR ---
+    if (!append) {
+      // legado: substitui tudo (usado por fetchRemoteKMZ)
+      S.kmzAllPolygons = polys.slice();
+      S.kmzSources = [{ name: sourceName, count: polys.length, startIdx: 0 }];
+      S.kmzPolygon = polys[0];
+      drawKMZPolygons(S.kmzAllPolygons, { append: false });
+    } else {
+      // v5.6: acumula
+      if (!Array.isArray(S.kmzAllPolygons)) S.kmzAllPolygons = [];
+      if (!Array.isArray(S.kmzSources)) S.kmzSources = [];
+      var startIdx = S.kmzAllPolygons.length;
+      // concatena novos polígonos
+      for (var i = 0; i < polys.length; i++) S.kmzAllPolygons.push(polys[i]);
+      S.kmzSources.push({ name: sourceName, count: polys.length, startIdx: startIdx });
+      if (!S.kmzPolygon) S.kmzPolygon = polys[0]; // mantém compat com código legado que usa kmzPolygon singular
+      // desenha apenas os novos, sem apagar os existentes
+      drawKMZPolygons(polys, { append: true, sourceIdx: S.kmzSources.length - 1, sourceName: sourceName });
+    }
 
-    drawKMZPolygons(polys);
-
-    // persistir no localStorage do projeto
+    // persistir no localStorage do projeto (estrutura v5.6: {polys, sources})
     if (S.project) {
       try {
-        localStorage.setItem("cg_kmz_" + S.project.folder, JSON.stringify(polys));
+        var payload = { v: 2, polys: S.kmzAllPolygons, sources: S.kmzSources };
+        localStorage.setItem("cg_kmz_" + S.project.folder, JSON.stringify(payload));
       } catch(e) {}
     }
 
     var totalPts = polys.reduce(function(a, p){ return a + p.length; }, 0);
-    log("✅ KMZ carregado: " + polys.length + " polígono(s), " + totalPts + " vértices", "ok");
+    var totalAtivos = S.kmzSources ? S.kmzSources.length : 1;
+    var totalPolys = S.kmzAllPolygons.length;
+    if (append) {
+      log("✅ KMZ adicionado: " + sourceName + " — " + polys.length + " polígono(s), " + totalPts + " vértices · TOTAL no mapa: " + totalAtivos + " KMZ / " + totalPolys + " polígono(s)", "ok");
+    } else {
+      log("✅ KMZ carregado: " + sourceName + " — " + polys.length + " polígono(s), " + totalPts + " vértices", "ok");
+    }
 
-    // ajustar viewport do mapa para o polígono
-    if (S.map) {
-      var bounds = L.latLngBounds(polys[0]);
-      S.map.fitBounds(bounds, { padding: [20, 20] });
+    // ajustar viewport do mapa — cobre TODOS os polígonos carregados (não só o novo)
+    if (doFit && S.map && S.kmzAllPolygons.length > 0) {
+      try {
+        var allPts = [];
+        S.kmzAllPolygons.forEach(function(p){ p.forEach(function(pt){ allPts.push(pt); }); });
+        if (allPts.length > 0) {
+          var bounds = L.latLngBounds(allPts);
+          S.map.fitBounds(bounds, { padding: [20, 20] });
+        }
+      } catch(e) {}
     }
   } catch(err) {
-    log("Erro ao ler KMZ: " + err.message, "err");
+    log("Erro ao ler " + sourceName + ": " + err.message, "err");
   }
 }
 
@@ -701,61 +749,124 @@ function parseKMLPolygons(kmlText) {
 }
 
 // Desenha os polígonos no mapa com estilo destacado
-function drawKMZPolygons(polys) {
-  // limpa anteriores
-  if (ML.kmzLayers) {
-    ML.kmzLayers.forEach(function(l){ if (S.map) S.map.removeLayer(l); });
+// v5.6: suporta modo append (adiciona camadas sem apagar anteriores)
+//   opts.append     = true → adiciona sem limpar
+//   opts.sourceIdx  = índice na paleta (para cor distinta por KMZ)
+//   opts.sourceName = nome para tooltip
+function drawKMZPolygons(polys, opts) {
+  opts = opts || {};
+  var append = !!opts.append;
+  var sourceIdx = (typeof opts.sourceIdx === "number") ? opts.sourceIdx : 0;
+  var sourceName = opts.sourceName || null;
+
+  if (!append) {
+    // limpa anteriores (comportamento legado)
+    if (ML.kmzLayers) {
+      ML.kmzLayers.forEach(function(l){ if (S.map) S.map.removeLayer(l); });
+    }
+    ML.kmzLayers = [];
+  } else {
+    if (!ML.kmzLayers) ML.kmzLayers = [];
   }
-  ML.kmzLayers = [];
+
+  var color = KMZ_PALETTE[sourceIdx % KMZ_PALETTE.length];
+
   polys.forEach(function(poly, idx) {
     var layer = L.polygon(poly, {
-      color: "#f59e0b",
+      color: color,
       weight: 3,
       opacity: 0.9,
-      fillColor: "#f59e0b",
+      fillColor: color,
       fillOpacity: 0.08,
       dashArray: idx === 0 ? null : "5, 5"
     }).addTo(S.map);
-    layer.bindTooltip("Área de atuação" + (polys.length > 1 ? " #" + (idx+1) : ""), { sticky: true });
+    var label = sourceName
+      ? (sourceName + (polys.length > 1 ? " #" + (idx+1) : ""))
+      : ("Área de atuação" + (polys.length > 1 ? " #" + (idx+1) : ""));
+    layer.bindTooltip(label, { sticky: true });
     ML.kmzLayers.push(layer);
   });
 }
 
 // Restaura KMZ salvo no localStorage ao trocar projeto
+// v5.6: suporta formato novo {v:2, polys, sources} e legado (array direto)
 function restoreKMZ() {
   if (!S.project) return;
   try {
     var raw = localStorage.getItem("cg_kmz_" + S.project.folder);
     if (!raw) return;
-    var polys = JSON.parse(raw);
-    if (Array.isArray(polys) && polys.length > 0) {
-      S.kmzPolygon = polys[0];
-      S.kmzAllPolygons = polys;
-      if (S.map) drawKMZPolygons(polys);
-      log("↻ Polígono KMZ restaurado (" + polys.length + ")", "info");
+    var data = JSON.parse(raw);
+
+    var polys = null;
+    var sources = null;
+
+    if (Array.isArray(data)) {
+      // formato legado v1: array direto de polígonos (todos na mesma "source")
+      polys = data;
+      sources = [{ name: "Área restaurada", count: polys.length, startIdx: 0 }];
+    } else if (data && data.v === 2 && Array.isArray(data.polys)) {
+      // formato v2
+      polys = data.polys;
+      sources = Array.isArray(data.sources) && data.sources.length
+        ? data.sources
+        : [{ name: "Área restaurada", count: polys.length, startIdx: 0 }];
+    } else {
+      return;
     }
+
+    if (polys.length === 0) return;
+
+    S.kmzAllPolygons = polys;
+    S.kmzSources = sources;
+    S.kmzPolygon = polys[0];
+
+    if (S.map) {
+      // limpa qualquer camada antiga e redesenha TODAS as sources com paleta
+      if (ML.kmzLayers) {
+        ML.kmzLayers.forEach(function(l){ if (S.map) S.map.removeLayer(l); });
+      }
+      ML.kmzLayers = [];
+      sources.forEach(function(src, srcIdx){
+        var from = src.startIdx || 0;
+        var to = from + (src.count || 0);
+        var slice = polys.slice(from, to);
+        if (slice.length > 0) {
+          drawKMZPolygons(slice, { append: true, sourceIdx: srcIdx, sourceName: src.name });
+        }
+      });
+    }
+    log("↻ " + sources.length + " KMZ restaurado(s) (" + polys.length + " polígono(s) no total)", "info");
   } catch(e) {}
 }
 
-// Limpa KMZ do projeto atual
+// Limpa TODOS os KMZ carregados do projeto atual (v5.6)
 function clearKMZ() {
-  if (!confirm("Remover o polígono de atuação do projeto atual?")) return;
+  var n = (S.kmzSources && S.kmzSources.length) ? S.kmzSources.length : (S.kmzAllPolygons ? 1 : 0);
+  if (n === 0) { log("ℹ️ Nenhum KMZ para remover", "info"); return; }
+  if (!confirm("Remover TODOS os " + n + " KMZ carregado(s) no projeto atual?")) return;
   S.kmzPolygon = null;
   S.kmzAllPolygons = null;
+  S.kmzSources = null;
   if (ML.kmzLayers) ML.kmzLayers.forEach(function(l){ if (S.map) S.map.removeLayer(l); });
   ML.kmzLayers = [];
   if (S.project) localStorage.removeItem("cg_kmz_" + S.project.folder);
-  log("🗑️ KMZ removido", "ok");
+  log("🗑️ " + n + " KMZ removido(s)", "ok");
 }
 
-// Handler do input file do KMZ
+// Handler do input file do KMZ (v5.6 — múltiplos arquivos)
 function triggerKMZ() {
   var inp = document.getElementById("kmz-input");
   if (inp) inp.click();
 }
-function onKMZSelected(ev) {
-  var f = ev.target.files[0];
-  if (f) loadKMZFile(f);
+async function onKMZSelected(ev) {
+  var files = ev.target.files;
+  if (!files || files.length === 0) { ev.target.value = ""; return; }
+  // Processa em série (append=true → acumula no mapa). Só ajusta viewport no último.
+  log("📥 Carregando " + files.length + " arquivo(s) KMZ/KML...", "info");
+  for (var i = 0; i < files.length; i++) {
+    var isLast = (i === files.length - 1);
+    await loadKMZFile(files[i], { append: true, sourceName: files[i].name, fitBounds: isLast });
+  }
   ev.target.value = "";
 }
 
@@ -780,6 +891,10 @@ function base64ToBlob(b64, type) {
 }
 
 // Fetch remoto — chamado em startApp se usuário comum, ou manualmente pelo admin
+// v5.6: não substitui mais TUDO. Remove apenas a source anterior "Admin central"
+// e re-adiciona a versão fresca, preservando KMZs locais adicionais do operador.
+var KMZ_ADMIN_SOURCE_NAME = "Admin central (remoto)";
+
 async function fetchRemoteKMZ() {
   if (!S.project) return false;
   try {
@@ -791,13 +906,67 @@ async function fetchRemoteKMZ() {
     }
     var blob = base64ToBlob(res.content, "application/vnd.google-earth.kmz");
     var fakeFile = new File([blob], "area_atuacao.kmz", { type: "application/vnd.google-earth.kmz" });
-    await loadKMZFile(fakeFile);
+    // v5.6: remove versão anterior da source "Admin central" (se existir) e adiciona a nova
+    removeKMZSourceByName(KMZ_ADMIN_SOURCE_NAME);
+    await loadKMZFile(fakeFile, { append: true, sourceName: KMZ_ADMIN_SOURCE_NAME, fitBounds: true });
     if (res.meta) log("↻ KMZ publicado por " + (res.meta.uploadedBy || "?") + " em " + (res.meta.uploadedAt || "?"), "info");
     return true;
   } catch (e) {
     log("⚠️ Falha ao baixar KMZ remoto: " + e.message, "err");
     return false;
   }
+}
+
+// Remove uma source específica (pelo nome) e redesenha o mapa — v5.6
+function removeKMZSourceByName(name) {
+  if (!Array.isArray(S.kmzSources) || S.kmzSources.length === 0) return false;
+  var idx = -1;
+  for (var i = 0; i < S.kmzSources.length; i++) {
+    if (S.kmzSources[i].name === name) { idx = i; break; }
+  }
+  if (idx < 0) return false;
+
+  var src = S.kmzSources[idx];
+  var from = src.startIdx || 0;
+  var to = from + (src.count || 0);
+
+  // remove polígonos da source do array
+  var removed = (S.kmzAllPolygons || []).splice(from, to - from);
+
+  // remove source e recalcula startIdx dos que vieram depois
+  S.kmzSources.splice(idx, 1);
+  for (var j = 0; j < S.kmzSources.length; j++) {
+    if (j >= idx) {
+      S.kmzSources[j].startIdx = (S.kmzSources[j].startIdx || 0) - (to - from);
+    }
+  }
+
+  // redesenha o mapa do zero com sources restantes
+  if (S.map && ML.kmzLayers) {
+    ML.kmzLayers.forEach(function(l){ S.map.removeLayer(l); });
+    ML.kmzLayers = [];
+  }
+  S.kmzSources.forEach(function(s, si){
+    var f = s.startIdx || 0;
+    var t = f + (s.count || 0);
+    var slice = (S.kmzAllPolygons || []).slice(f, t);
+    if (slice.length > 0) drawKMZPolygons(slice, { append: true, sourceIdx: si, sourceName: s.name });
+  });
+
+  // atualiza kmzPolygon singular (compat)
+  S.kmzPolygon = (S.kmzAllPolygons && S.kmzAllPolygons.length > 0) ? S.kmzAllPolygons[0] : null;
+
+  // persiste
+  if (S.project) {
+    try {
+      if (S.kmzAllPolygons && S.kmzAllPolygons.length > 0) {
+        localStorage.setItem("cg_kmz_" + S.project.folder, JSON.stringify({ v:2, polys: S.kmzAllPolygons, sources: S.kmzSources }));
+      } else {
+        localStorage.removeItem("cg_kmz_" + S.project.folder);
+      }
+    } catch(e) {}
+  }
+  return removed.length > 0;
 }
 
 // Admin: trigger file picker
