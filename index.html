@@ -6,10 +6,10 @@
 <meta name="theme-color" content="#0a0e1a">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
-<title>Campo GEO v5.1</title>
+<title>Campo GEO v5.2</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<!-- v5.1: exifr (EXIF robusto), JSZip (KMZ). Autenticação via usuário/senha (Apps Script). KMZ publicado pelo admin. -->
+<!-- v5.2: geo-fence não bloqueante (warn + flag fora_area). Mantém v5.1: exifr, JSZip, auth via Apps Script, KMZ central. -->
 <script src="https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <style>
@@ -146,7 +146,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
     <div class="hd-left">
       <div class="hd-logo"><img src="logo.svg" alt="BL"></div>
       <div>
-        <div class="hd-title">CAMPO GEO <span style="font-size:9px;color:var(--muted)">v4.2</span></div>
+        <div class="hd-title">CAMPO GEO <span style="font-size:9px;color:var(--muted)">v5.2</span></div>
         <div class="hd-sub" id="hd-sub">—</div>
       </div>
     </div>
@@ -225,7 +225,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
         <div>
           <div class="sec">Log de Operações</div>
           <div id="terminal" class="terminal">
-            <div class="log-info"><span class="log-ts">[SISTEMA]</span> Campo GEO v4.2 pronto.</div>
+            <div class="log-info"><span class="log-ts">[SISTEMA]</span> Campo GEO v5.2 pronto.</div>
           </div>
         </div>
       </div>
@@ -575,7 +575,8 @@ function addMarker(pt, type) {
   var label = pt.name || "Foto";
   var addr = pt.address ? (pt.address.bairro + ", " + pt.address.rua) : "";
   var coords = pt.lat.toFixed(5) + ", " + pt.lng.toFixed(5);
-  var marker = L.marker([pt.lat, pt.lng], { icon: ico }).bindPopup("<b>" + label + "</b><br>" + addr + "<br><small>" + coords + "</small>").addTo(S.map);
+  var fora = pt.fora_area ? "<br><span style=\"color:#f59e0b;font-weight:600\">⚠️ FORA DA ÁREA</span>" : "";
+  var marker = L.marker([pt.lat, pt.lng], { icon: ico }).bindPopup("<b>" + label + "</b><br>" + addr + "<br><small>" + coords + "</small>" + fora).addTo(S.map);
   if (type === "sent") ML.sent[pt.id] = marker;
   else ML.queue[pt.id] = marker;
 }
@@ -1008,17 +1009,24 @@ async function processPhoto(file, lat, lng, acc, tsMs, gpsSource) {
     if (nameExists) { log("⚠️ Dup (nome): " + name, "err"); return; }
   }
 
-  // === VALIDAÇÃO KMZ (se polígono de atuação carregado) ===
-  if (S.kmzPolygon && lat != null && lng != null) {
-    if (!pointInPolygon([lat, lng], S.kmzPolygon)) {
-      log("🚫 FORA da área de atuação: " + name + " (" + lat.toFixed(5) + "," + lng.toFixed(5) + ")", "err");
-      // marca no mapa em vermelho para visualização
+  // === VALIDAÇÃO KMZ — geo-fence v5.2 (warn + flag, não bloqueia) ===
+  // Regra: checa contra TODOS os polígonos ativos (S.kmzAllPolygons); se o ponto
+  // cai fora de todos, grava o cadastro com `fora_area: true` para auditoria.
+  // Não bloqueia o salvamento — GPS em campo pode derivar e operador perde o ponto.
+  var foraArea = false;
+  var polysToCheck = (S.kmzAllPolygons && S.kmzAllPolygons.length)
+    ? S.kmzAllPolygons
+    : (S.kmzPolygon ? [S.kmzPolygon] : []);
+  if (polysToCheck.length > 0 && lat != null && lng != null) {
+    var dentro = polysToCheck.some(function(poly){ return pointInPolygon([lat, lng], poly); });
+    if (!dentro) {
+      foraArea = true;
+      log("⚠️ FORA da área de atuação: " + name + " (" + lat.toFixed(5) + "," + lng.toFixed(5) + ") — salvando com flag fora_area=true", "err");
       if (S.map) {
         var rejMk = L.marker([lat, lng], { icon: ICO_REJECTED }).addTo(S.map);
-        rejMk.bindPopup("<b>REJEITADA</b><br>Fora do polígono KMZ<br>" + name).openPopup();
+        rejMk.bindPopup("<b>FORA DA ÁREA</b><br>" + name + "<br><small>salvo com fora_area=true</small>").openPopup();
         setTimeout(function(){ if (S.map) S.map.removeLayer(rejMk); }, 8000);
       }
-      return;
     }
   }
 
@@ -1051,7 +1059,8 @@ async function processPhoto(file, lat, lng, acc, tsMs, gpsSource) {
     id: genId(), name: name, base64: compressed.base64,
     lat: lat, lng: lng, acc: acc, ts: tsMs, address: address,
     timestamp: new Date().toISOString(), sizeKB: compressed.sizeKB,
-    gpsSource: gpsSource
+    gpsSource: gpsSource,
+    fora_area: foraArea
   };
 
   S.photos.push(photo);
