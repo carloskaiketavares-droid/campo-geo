@@ -898,7 +898,10 @@ function loadSentLocal() {
     S.sentPts = pts;
     pts.forEach(function(pt) { if (pt.lat != null && pt.lng != null && !ML.sent[pt.id]) addMarker(pt, "sent"); });
     updateStats();
-    if (pts.length > 0) log("Cache local: " + pts.length + " pontos.", "ok");
+    if (pts.length > 0) {
+      log("Cache local: " + pts.length + " pontos.", "ok");
+      fitAllMarkers(); // v5.2: centraliza mapa nos pontos
+    }
   } catch(e) { log("Erro cache: " + e.message, "err"); }
 }
 
@@ -920,6 +923,7 @@ async function loadSynced() {
     saveSentLocal();
     updateStats();
     log("Drive: +" + added + " novos | total " + S.sentPts.length, "ok");
+    if (added > 0) fitAllMarkers(); // v5.2: recentraliza quando chegam pontos novos
   } catch(e) { log("Erro sync: " + e.message, "err"); }
 }
 
@@ -1069,6 +1073,21 @@ async function processPhoto(file, lat, lng, acc, tsMs, gpsSource) {
   log("📸 " + name + " → " + address.bairro + ", " + address.rua + " [" + gpsSource + "] (" + compressed.sizeKB + "KB)", "ok");
 }
 
+// ── FIT MAP TO ALL POINTS (v5.2) ──
+// Ajusta viewport do mapa para englobar todos os pontos enviados+fila.
+// Chamado após carregar do localStorage, sync com Drive ou recover via ESCANEAR.
+function fitAllMarkers() {
+  if (!S.map) return;
+  var all = S.photos.concat(S.sentPts);
+  var coords = all.filter(function(p){ return p.lat != null && p.lng != null; })
+                  .map(function(p){ return [p.lat, p.lng]; });
+  if (coords.length === 0) return;
+  try {
+    var b = L.latLngBounds(coords);
+    S.map.fitBounds(b, { padding: [30, 30], maxZoom: 16 });
+  } catch(e) { log("Erro fitAllMarkers: " + e.message, "err"); }
+}
+
 // ── RAY CASTING — ponto dentro de polígono ──
 function pointInPolygon(pt, poly) {
   var x = pt[0], y = pt[1], inside = false;
@@ -1212,7 +1231,7 @@ function switchTab(tab) {
   document.querySelectorAll(".tab-btn").forEach(function(el) { el.classList.remove("active"); });
   document.getElementById("pane-" + tab).classList.add("active");
   document.querySelector("[data-t='" + tab + "']").classList.add("active");
-  if (tab === "mapa") setTimeout(function() { if (S.map) S.map.invalidateSize(); }, 120);
+  if (tab === "mapa") setTimeout(function() { if (S.map) { S.map.invalidateSize(); fitAllMarkers(); } }, 120);
   if (tab === "upload" || tab === "enviar") { updateQueueUI(); updateStats(); }
   if (tab === "admin") { initAdminPane(); refreshKMZStatus(); }
 }
@@ -1355,6 +1374,7 @@ async function scanDrivePhotos() {
     recoveredPts.forEach(function(pt) {
       if (pt.lat != null && pt.lng != null) addMarker(pt, "sent");
     });
+    if (recoveredPts.length > 0) fitAllMarkers(); // v5.2
     updateStats();
 
     log("🗺️ " + recoveredPts.length + " pontos restaurados no mapa!", "ok");
