@@ -249,6 +249,32 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
           <button id="adm-kmz-publish" style="width:100%;padding:12px;border-radius:8px;border:none;background:#16a34a;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--mono);margin-top:8px" onclick="publishAdminKMZ()" disabled>📤 PUBLICAR KMZ NO DRIVE</button>
         </div>
 
+        <div class="card" style="margin-top:10px;border:1px solid #1e3a5f;background:#0a1420">
+          <div class="sec" style="color:#60a5fa">🤖 Gerar KMZ Automático (v5.5)</div>
+          <div style="font-size:10px;color:#94a3b8;line-height:1.5;margin-bottom:8px">
+            Cole <b>um bairro/endereço por linha</b>. O sistema consulta OSM/Nominatim,
+            gera polígonos reais (ou círculo-fallback) e publica direto em <code>04_PROJETOS/{proj}/_config/</code>.
+            Fonte de verdade salva em <code>06_CAMPO_GEO/KMZ_FONTES/{proj}/</code>.
+          </div>
+          <div class="row"><span class="rk">Projeto</span>
+            <select id="adm-gen-proj" onchange="applyProjectDefaults()" style="flex:1;padding:6px;border-radius:6px;background:#0f1419;color:#fff;border:1px solid #334155;font-family:var(--mono);font-size:11px"></select>
+          </div>
+          <div class="row" style="margin-top:6px"><span class="rk">Cidade</span>
+            <input id="adm-gen-city" style="flex:1;padding:6px;border-radius:6px;background:#0f1419;color:#fff;border:1px solid #334155;font-family:var(--mono);font-size:11px" placeholder="Rio das Ostras">
+          </div>
+          <div class="row" style="margin-top:6px"><span class="rk">Estado (UF)</span>
+            <input id="adm-gen-state" maxlength="2" style="flex:1;padding:6px;border-radius:6px;background:#0f1419;color:#fff;border:1px solid #334155;font-family:var(--mono);font-size:11px" placeholder="RJ">
+          </div>
+          <div class="row" style="margin-top:6px"><span class="rk">Raio fallback (m)</span>
+            <input id="adm-gen-radius" type="number" value="500" min="50" max="5000" style="flex:1;padding:6px;border-radius:6px;background:#0f1419;color:#fff;border:1px solid #334155;font-family:var(--mono);font-size:11px">
+          </div>
+          <div style="font-size:10px;color:#94a3b8;margin-top:8px;margin-bottom:4px">Endereços (1 por linha — bairros, ruas, pontos):</div>
+          <textarea id="adm-gen-addresses" rows="8" placeholder="Bairro Centro&#10;Extensão do Bosque&#10;Rua Jalu, Bairro Extensão do Bosque&#10;Praça Flamboyant" style="width:100%;padding:8px;border-radius:6px;background:#0f1419;color:#fff;border:1px solid #334155;font-family:var(--mono);font-size:11px;resize:vertical;box-sizing:border-box"></textarea>
+          <div style="font-size:10px;color:#64748b;margin-top:4px">Max 300 por execução · ~1,2s por endereço (rate-limit OSM)</div>
+          <button id="adm-gen-btn" style="width:100%;padding:12px;border-radius:8px;border:none;background:#2563eb;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--mono);margin-top:8px" onclick="generateAndPublishKMZ()">🤖 GERAR E PUBLICAR KMZ AUTOMÁTICO</button>
+          <div id="adm-gen-result" style="margin-top:8px;font-size:11px"></div>
+        </div>
+
         <div class="card" style="margin-top:10px">
           <div class="sec">Status KMZ por projeto</div>
           <div id="adm-kmz-status" style="font-size:10px;color:#cbd5e1;line-height:1.7">
@@ -869,7 +895,118 @@ function initAdminPane() {
     return '<option value="' + p.folder + '">' + p.name + '</option>';
   }).join("");
   if (S.project) sel.value = S.project.folder;
+  try { initAdminGenPane(); } catch(e) {}
 }
+
+// ════════════════════════════════════════════════════════════
+// KMZ AUTO-GEN v5.5 — admin cola bairros, backend gera KMZ
+// ════════════════════════════════════════════════════════════
+
+var PROJECT_DEFAULTS = {
+  "RIO_DAS_OSTRAS_RJ": { city: "Rio das Ostras", state: "RJ" },
+  "MARICA": { city: "Maricá", state: "RJ" },
+  "ADESAO_IMPLURB_MANAUS": { city: "Manaus", state: "AM" }
+};
+
+function applyProjectDefaults() {
+  var sel = document.getElementById("adm-gen-proj");
+  if (!sel) return;
+  var folder = sel.value;
+  var d = PROJECT_DEFAULTS[folder] || { city: "", state: "" };
+  var cityEl = document.getElementById("adm-gen-city");
+  var stateEl = document.getElementById("adm-gen-state");
+  if (cityEl && !cityEl.dataset.userTouched) cityEl.value = d.city;
+  if (stateEl && !stateEl.dataset.userTouched) stateEl.value = d.state;
+}
+
+function escapeHtmlGen(s) {
+  return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+async function generateAndPublishKMZ() {
+  var projSel = document.getElementById("adm-gen-proj");
+  var projectFolder = projSel.value;
+  if (!projectFolder) { alert("Selecione um projeto."); return; }
+
+  var raw = document.getElementById("adm-gen-addresses").value || "";
+  var addresses = raw.split("\n").map(function(s){ return s.trim(); }).filter(Boolean);
+  if (!addresses.length) { alert("Cole pelo menos 1 endereço (1 por linha)."); return; }
+  if (addresses.length > 300) { alert("Máximo 300 endereços por execução. Divida em lotes."); return; }
+
+  var city = (document.getElementById("adm-gen-city").value || "").trim();
+  var state = (document.getElementById("adm-gen-state").value || "").trim();
+  var radius = parseInt(document.getElementById("adm-gen-radius").value, 10) || 500;
+
+  var btn = document.getElementById("adm-gen-btn");
+  var out = document.getElementById("adm-gen-result");
+  btn.disabled = true;
+  var estMin = Math.ceil(addresses.length * 1.2 / 60);
+  btn.innerHTML = "⏳ Gerando... (" + addresses.length + " itens, ~" + estMin + " min)";
+  out.innerHTML = '<span style="color:#94a3b8">Consultando Nominatim/OSM — isso leva cerca de ' + estMin + ' min. Não feche a aba.</span>';
+
+  try {
+    var res = await apiPost({
+      action: "generateKMZ",
+      project: projectFolder,
+      addresses: addresses,
+      defaults: { city: city, state: state, country: "Brasil", fallback_radius_m: radius }
+    });
+
+    if (!res.success) {
+      out.innerHTML = '<span style="color:#ef4444">❌ ' + escapeHtmlGen(res.error || "erro") + (res.detail ? ": " + escapeHtmlGen(res.detail) : "") + '</span>';
+      log("❌ generateKMZ falhou: " + JSON.stringify(res), "err");
+      return;
+    }
+
+    var items = res.items || [];
+    var ok = items.filter(function(it){ return it.strategy !== "FAIL"; }).length;
+    var fail = items.length - ok;
+    var rows = items.map(function(it){
+      var color = it.strategy === "FAIL" ? "#ef4444" : (String(it.strategy).indexOf("osm_") === 0 ? "#10b981" : "#f59e0b");
+      return '<tr>' +
+        '<td style="padding:3px 6px;border-bottom:1px solid #1e293b">' + escapeHtmlGen(it.name) + '</td>' +
+        '<td style="padding:3px 6px;border-bottom:1px solid #1e293b;color:' + color + '">' + escapeHtmlGen(it.strategy) + '</td>' +
+      '</tr>';
+    }).join("");
+
+    var kb = Math.round((res.kmz_size_bytes || 0) / 1024);
+    out.innerHTML =
+      '<div style="color:#10b981;margin-bottom:4px">✅ ' + ok + '/' + items.length + ' ok · KMZ ' + kb + ' KB publicado em <code>04_PROJETOS/' + escapeHtmlGen(res.project) + '/_config/</code></div>' +
+      (fail ? '<div style="color:#f59e0b;margin-bottom:4px">⚠️ ' + fail + ' endereço(s) não resolvido(s) (marcados FAIL)</div>' : '') +
+      '<div style="color:#94a3b8;font-size:10px;margin-bottom:6px">Fonte de verdade: <code>06_CAMPO_GEO/KMZ_FONTES/' + escapeHtmlGen(res.project) + '/' + escapeHtmlGen(res.source_file_name) + '</code></div>' +
+      '<table style="width:100%;font-size:10px;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:3px 6px;color:#64748b;border-bottom:1px solid #334155">Endereço</th><th style="text-align:left;padding:3px 6px;color:#64748b;border-bottom:1px solid #334155">Estratégia</th></tr></thead><tbody>' + rows + '</tbody></table>';
+
+    log("✅ KMZ gerado: " + ok + "/" + items.length + " (" + kb + " KB)", "ok");
+    refreshKMZStatus();
+    if (S.project && S.project.folder === res.project) {
+      await fetchRemoteKMZ();
+      log("🔄 KMZ atualizado no mapa atual", "ok");
+    }
+  } catch (e) {
+    out.innerHTML = '<span style="color:#ef4444">❌ Falha: ' + escapeHtmlGen(e.message || e) + '</span>';
+    log("❌ generateKMZ exception: " + (e.message || e), "err");
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = "🤖 GERAR E PUBLICAR KMZ AUTOMÁTICO";
+  }
+}
+
+function initAdminGenPane() {
+  var sel = document.getElementById("adm-gen-proj");
+  if (!sel) return;
+  sel.innerHTML = PROJECTS.map(function(p){
+    return '<option value="' + p.folder + '">' + p.name + '</option>';
+  }).join("");
+  if (S.project) sel.value = S.project.folder;
+  applyProjectDefaults();
+  // marca campos editados manualmente para não sobrescrever depois
+  var cityEl = document.getElementById("adm-gen-city");
+  var stateEl = document.getElementById("adm-gen-state");
+  if (cityEl && !cityEl._hooked) { cityEl._hooked = true; cityEl.addEventListener("input", function(){ cityEl.dataset.userTouched = "1"; }); }
+  if (stateEl && !stateEl._hooked) { stateEl._hooked = true; stateEl.addEventListener("input", function(){ stateEl.dataset.userTouched = "1"; }); }
+}
+
+
 
 function revealAdminUI() {
   var isAdm = S.authUser && String(S.authUser.cargo || "").toLowerCase() === "admin";

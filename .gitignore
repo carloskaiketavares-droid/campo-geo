@@ -1,0 +1,4 @@
+# Arquivos temporarios de patch/deploy
+__*.ps1
+__*_fragment.*
+*.bak-pre-*
