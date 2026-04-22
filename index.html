@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
@@ -9,7 +9,7 @@
 <meta name="theme-color" content="#0a0e1a">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
-<title>Campo GEO v5.9.2</title>
+<title>Campo GEO v5.9.3</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <!-- v5.6: MULTI-KMZ — operador pode carregar vários KMZ/KML no mesmo mapa (append). FAB abre seletor múltiplo; KMZ central admin preserva KMZs locais adicionais. Mantém v5.4: geo-fence não bloqueante; v5.1: exifr, JSZip, auth via Apps Script. -->
@@ -310,7 +310,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 <script>
 // v5.9.1: Auto-update — forca reload se versao cacheada for antiga
 (function(){
-  var APP_VERSION = "5.9.2";
+  var APP_VERSION = "5.9.3";
   var lsKey = "cg_app_version";
   var cached = localStorage.getItem(lsKey);
   if (cached && cached !== APP_VERSION) {
@@ -524,12 +524,16 @@ async function readExifGPS(file) {
       tiff: true,
       pick: ["latitude", "longitude", "GPSLatitude", "GPSLongitude",
              "GPSAltitude", "DateTimeOriginal", "CreateDate", "ModifyDate",
-             "GPSHPositioningError"]
+             "GPSHPositioningError", "GPSLatitudeRef", "GPSLongitudeRef"]
     });
     if (!data) return null;
     var lat = data.latitude;
     var lng = data.longitude;
     if (lat == null || lng == null) return null;
+    // 🛡️ BUG #4 FIX v5.9.3: iPhone HEIC pode perder sinal negativo em lat/lng
+    // Corrige defensivamente usando o Ref (N/S/E/W)
+    if (data.GPSLatitudeRef === "S" && lat > 0) lat = -lat;
+    if (data.GPSLongitudeRef === "W" && lng > 0) lng = -lng;
     // timestamp da foto (fallback: agora)
     var ts = null;
     var dt = data.DateTimeOriginal || data.CreateDate || data.ModifyDate;
