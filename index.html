@@ -9,7 +9,7 @@
 <meta name="theme-color" content="#0a0e1a">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
-<title>Campo GEO v5.9.4</title>
+<title>Campo GEO v5.9.5</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <!-- v5.6: MULTI-KMZ — operador pode carregar vários KMZ/KML no mesmo mapa (append). FAB abre seletor múltiplo; KMZ central admin preserva KMZs locais adicionais. Mantém v5.4: geo-fence não bloqueante; v5.1: exifr, JSZip, auth via Apps Script. -->
@@ -283,9 +283,21 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 </div>
 
 <script>
+// v5.9.5 NUCLEAR CACHE BUST: forca Safari iOS a puxar versao nova
+(function nukeStaleCache() {
+  try {
+    var EXPECTED = "5.9.5";
+    var qs = new URLSearchParams(location.search);
+    if (qs.get("v") !== EXPECTED) {
+      qs.set("v", EXPECTED);
+      location.replace(location.pathname + "?" + qs.toString() + location.hash);
+    }
+  } catch(e) { /* nao trava o app */ }
+})();
+
 // v5.9.1: Auto-update — forca reload se versao cacheada for antiga
 (function(){
-  var APP_VERSION = "5.9.4";
+  var APP_VERSION = "5.9.5";
   var lsKey = "cg_app_version";
   var cached = localStorage.getItem(lsKey);
   if (cached && cached !== APP_VERSION) {
@@ -509,6 +521,9 @@ async function readExifGPS(file) {
     // Corrige defensivamente usando o Ref (N/S/E/W)
     if (data.GPSLatitudeRef === "S" && lat > 0) lat = -lat;
     if (data.GPSLongitudeRef === "W" && lng > 0) lng = -lng;
+    // v5.9.5 safety net final
+    var _fixExif = fixSignToBrazil(lat, lng, "EXIF");
+    lat = _fixExif.lat; lng = _fixExif.lng;
     // timestamp da foto (fallback: agora)
     var ts = null;
     var dt = data.DateTimeOriginal || data.CreateDate || data.ModifyDate;
@@ -530,12 +545,34 @@ async function readExifGPS(file) {
 }
 
 // ── GPS ──────────────────────────────────────
+// v5.9.5 SAFETY NET: Bounding Box Brasil
+// Ultima defesa contra EXIF sem Ref ou geolocation buggy
+var BR_BBOX = { latMin: -34, latMax: 6, lngMin: -74, lngMax: -34 };
+function isInBrazil(lat, lng) {
+  return lat != null && lng != null
+      && lat >= BR_BBOX.latMin && lat <= BR_BBOX.latMax
+      && lng >= BR_BBOX.lngMin && lng <= BR_BBOX.lngMax;
+}
+function fixSignToBrazil(lat, lng, context) {
+  if (lat == null || lng == null) return { lat: lat, lng: lng, fixed: false };
+  if (isInBrazil(lat, lng)) return { lat: lat, lng: lng, fixed: false };
+  var newLat = -Math.abs(lat);
+  var newLng = -Math.abs(lng);
+  if (isInBrazil(newLat, newLng)) {
+    try { log("[SAFETY " + context + "] Fora do BR (" + lat.toFixed(4) + "," + lng.toFixed(4) + ") -> CORRIGIDO para (" + newLat.toFixed(4) + "," + newLng.toFixed(4) + ")", "err"); } catch(e) {}
+    return { lat: newLat, lng: newLng, fixed: true };
+  }
+  try { log("[SAFETY " + context + "] Fora do BR mesmo apos inversao: (" + lat.toFixed(4) + "," + lng.toFixed(4) + ")", "err"); } catch(e) {}
+  return { lat: lat, lng: lng, fixed: false };
+}
+
 function startGPS() {
   if (!navigator.geolocation) { setBadge("erro"); return; }
   setBadge("buscando");
   S.gpsWatch = navigator.geolocation.watchPosition(
     function(pos) {
-      S.gps = { lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy, ts: Date.now() };
+      var _fix = fixSignToBrazil(pos.coords.latitude, pos.coords.longitude, "GPS");
+      S.gps = { lat: _fix.lat, lng: _fix.lng, acc: pos.coords.accuracy, ts: Date.now() };
       setBadge("ok");
       document.getElementById("gps-lat").textContent = S.gps.lat.toFixed(6);
       document.getElementById("gps-lng").textContent = S.gps.lng.toFixed(6);
@@ -1227,6 +1264,12 @@ function triggerUpload() {
 async function processPhoto(file, lat, lng, acc, tsMs, gpsSource) {
   var name = file.name || ("foto_" + Date.now() + ".jpg");
   gpsSource = gpsSource || "DEVICE";
+
+  // v5.9.5: defesa final antes de salvar
+  if (lat != null && lng != null) {
+    var _fixPP = fixSignToBrazil(lat, lng, "PP:" + gpsSource);
+    lat = _fixPP.lat; lng = _fixPP.lng;
+  }
 
   // Deduplicação: para EXIF, só verifica nome; para CAMERA/DEVICE, verifica nome + GPS
   if (lat != null && lng != null && gpsSource !== "EXIF") {
