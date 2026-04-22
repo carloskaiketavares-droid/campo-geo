@@ -6,11 +6,12 @@
 <meta name="theme-color" content="#0a0e1a">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
-<title>Campo GEO v5.8</title>
+<title>Campo GEO v5.9</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <!-- v5.6: MULTI-KMZ — operador pode carregar vários KMZ/KML no mesmo mapa (append). FAB abre seletor múltiplo; KMZ central admin preserva KMZs locais adicionais. Mantém v5.4: geo-fence não bloqueante; v5.1: exifr, JSZip, auth via Apps Script. -->
 <!-- v5.8: KMZ AUTO-PUBLISH – admin FAB upload agora auto-publica KMZ no backend via saveKMZ, operadores recebem ao abrir projeto via fetchRemoteKMZ. -->
+<!-- v5.9: KMZ SYNC ROBUSTO \u2013 fetchRemoteKMZ com retry (3 tentativas), botao SYNC KMZ visivel para TODOS operadores, delay 2s no startApp. -->
 <script src="https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <style>
@@ -64,8 +65,9 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 
 #map{flex:1;z-index:1}
 .map-fab{position:absolute;bottom:16px;right:16px;z-index:999;background:#1e40af;border:none;border-radius:20px;color:#93c5fd;padding:8px 14px;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--mono);box-shadow:0 2px 8px rgba(0,0,0,0.6)}
-.map-fab-kmz{bottom:60px;background:#78350f;color:#fbbf24}
-.map-fab-clearkmz{bottom:104px;background:#7f1d1d;color:#fca5a5;padding:8px 12px}
+.map-fab-kmz{bottom:104px;background:#78350f;color:#fbbf24}
+.map-fab-kmzsync{bottom:60px;background:#1e3a5f;color:#93c5fd}
+.map-fab-clearkmz{bottom:148px;background:#7f1d1d;color:#fca5a5;padding:8px 12px}
 
 .foto-inner{padding:12px;display:flex;flex-direction:column;gap:10px}
 .cap-btn{padding:16px;border-radius:10px;border:none;background:linear-gradient(135deg,#1e40af,#3b82f6);color:#fff;font-size:16px;font-weight:700;font-family:var(--sans);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px}
@@ -173,6 +175,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
       <div id="map"></div>
       <button class="map-fab" onclick="loadSynced()">🔄 Sincronizar</button>
       <!-- FABs KMZ visíveis APENAS para cargo=Admin (atalho rápido no mapa). Operador usa a aba ⚙️ Admin. -->
+<button id="fab-kmz-sync" class="map-fab map-fab-kmzsync" onclick="fetchRemoteKMZ(0)" title="Sincronizar KMZ do servidor">\ud83d\udd04</button>
       <button id="fab-kmz" class="map-fab map-fab-kmz" onclick="triggerKMZ()" title="Adicionar KMZ/KML ao mapa — pode selecionar múltiplos (admin)" style="display:none">📐 KMZ+</button>
       <button id="fab-kmz-clear" class="map-fab map-fab-clearkmz" onclick="clearKMZ()" title="Remover TODOS os polígonos carregados (admin)" style="display:none">🗑️</button>
       <input id="kmz-input" type="file" multiple accept=".kmz,.kml,application/vnd.google-earth.kmz,application/vnd.google-earth.kml+xml" style="display:none" onchange="onKMZSelected(event)">
@@ -909,26 +912,40 @@ function base64ToBlob(b64, type) {
 // e re-adiciona a versão fresca, preservando KMZs locais adicionais do operador.
 var KMZ_ADMIN_SOURCE_NAME = "Admin central (remoto)";
 
-async function fetchRemoteKMZ() {
-  if (!S.project) return false;
-  try {
-    var res = await apiPost({ action: "getKMZ", project: S.project.folder });
-    if (!res || !res.success) {
-      if (res && res.error === "no_kmz") log("ℹ️ KMZ ainda não publicado pelo admin para este projeto", "info");
-      else log("⚠️ Erro ao buscar KMZ remoto: " + (res && res.error), "err");
-      return false;
+async function fetchRemoteKMZ(retryCount) {
+    if (!S.project) return false;
+    retryCount = retryCount || 0;
+    try {
+        log("\ud83d\udd04 Buscando KMZ remoto para " + S.project.folder + "...", "info");
+        var res = await apiPost({ action: "getKMZ", project: S.project.folder });
+        if (!res || !res.success) {
+            if (res && res.error === "no_kmz") {
+                log("\u2139\ufe0f KMZ ainda nao publicado pelo admin para este projeto", "info");
+            } else {
+                log("\u26a0\ufe0f Erro ao buscar KMZ remoto: " + (res && res.error) + (res && res.detail ? " (" + res.detail + ")" : ""), "err");
+                if (retryCount < 2) {
+                    log("\ud83d\udd01 Tentando novamente em 5s... (tentativa " + (retryCount+2) + "/3)", "info");
+                    setTimeout(function(){ fetchRemoteKMZ(retryCount + 1); }, 5000);
+                }
+            }
+            return false;
+        }
+        var blob = base64ToBlob(res.content, "application/vnd.google-earth.kmz");
+        var fakeFile = new File([blob], "area_atuacao.kmz", { type: "application/vnd.google-earth.kmz" });
+        removeKMZSourceByName(KMZ_ADMIN_SOURCE_NAME);
+        await loadKMZFile(fakeFile, { append: true, sourceName: KMZ_ADMIN_SOURCE_NAME, fitBounds: true });
+        var who = (res.meta && res.meta.uploadedBy) || "?";
+        var when = (res.meta && res.meta.uploadedAt) || "?";
+        log("\u2705 KMZ remoto carregado! Publicado por " + who + " em " + when, "ok");
+        return true;
+    } catch (e) {
+        log("\u26a0\ufe0f Falha ao baixar KMZ remoto: " + e.message, "err");
+        if (retryCount < 2) {
+            log("\ud83d\udd01 Tentando novamente em 5s... (tentativa " + (retryCount+2) + "/3)", "info");
+            setTimeout(function(){ fetchRemoteKMZ(retryCount + 1); }, 5000);
+        }
+        return false;
     }
-    var blob = base64ToBlob(res.content, "application/vnd.google-earth.kmz");
-    var fakeFile = new File([blob], "area_atuacao.kmz", { type: "application/vnd.google-earth.kmz" });
-    // v5.6: remove versão anterior da source "Admin central" (se existir) e adiciona a nova
-    removeKMZSourceByName(KMZ_ADMIN_SOURCE_NAME);
-    await loadKMZFile(fakeFile, { append: true, sourceName: KMZ_ADMIN_SOURCE_NAME, fitBounds: true });
-    if (res.meta) log("↻ KMZ publicado por " + (res.meta.uploadedBy || "?") + " em " + (res.meta.uploadedAt || "?"), "info");
-    return true;
-  } catch (e) {
-    log("⚠️ Falha ao baixar KMZ remoto: " + e.message, "err");
-    return false;
-  }
 }
 
 // Remove uma source específica (pelo nome) e redesenha o mapa — v5.6
@@ -1786,7 +1803,7 @@ function startApp() {
   if (S.authUser) log("🔐 Login: " + S.authUser.email, "ok");
   revealAdminUI(); // v5.1: mostra aba Admin + FABs se cargo=Admin
   // v5.1: busca KMZ central publicado (sobrescreve o cache local se houver versão remota)
-  setTimeout(function(){ fetchRemoteKMZ(); }, 500);
+  setTimeout(function(){ fetchRemoteKMZ(); }, 2000);
 }
 
 // ── AUTENTICAÇÃO USUÁRIO/SENHA (v5.0) ────────────
