@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
@@ -9,11 +9,12 @@
 <meta name="theme-color" content="#0a0e1a">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
-<title>Campo GEO v5.9.1</title>
+<title>Campo GEO v5.9.2</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <!-- v5.6: MULTI-KMZ — operador pode carregar vários KMZ/KML no mesmo mapa (append). FAB abre seletor múltiplo; KMZ central admin preserva KMZs locais adicionais. Mantém v5.4: geo-fence não bloqueante; v5.1: exifr, JSZip, auth via Apps Script. -->
 <!-- v5.8: KMZ AUTO-PUBLISH – admin FAB upload agora auto-publica KMZ no backend via saveKMZ, operadores recebem ao abrir projeto via fetchRemoteKMZ. -->
+<!-- v5.9.2: FIX CAMERA — removido check "nome duplicado" puro em isDup() (causava bloqueio falso ao 2o click na mesma rua). Dedup agora e so geografico+temporal (<11m E <10s). -->
 <!-- v5.9: KMZ SYNC ROBUSTO \u2013 fetchRemoteKMZ com retry (3 tentativas), botao SYNC KMZ visivel para TODOS operadores, delay 2s no startApp. -->
 <script src="https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -309,7 +310,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 <script>
 // v5.9.1: Auto-update — forca reload se versao cacheada for antiga
 (function(){
-  var APP_VERSION = "5.9.1";
+  var APP_VERSION = "5.9.2";
   var lsKey = "cg_app_version";
   var cached = localStorage.getItem(lsKey);
   if (cached && cached !== APP_VERSION) {
@@ -386,7 +387,6 @@ function isDup(lat, lng, name, tsMs) {
   var all = S.photos.concat(S.sentPts);
   for (var i = 0; i < all.length; i++) {
     var p = all[i];
-    if (name && p.name && p.name === name) return "nome duplicado";
     if (p.lat != null && p.lng != null && lat != null && lng != null) {
       var dist = hav(lat, lng, p.lat, p.lng);
       var secs = Math.abs((tsMs - (p.ts || 0)) / 1000);
