@@ -9,7 +9,7 @@
 <meta name="theme-color" content="#0a0e1a">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
-<title>Campo GEO v5.9.6</title>
+<title>Campo GEO v5.9.7</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <!-- v5.6: MULTI-KMZ — operador pode carregar vários KMZ/KML no mesmo mapa (append). FAB abre seletor múltiplo; KMZ central admin preserva KMZs locais adicionais. Mantém v5.4: geo-fence não bloqueante; v5.1: exifr, JSZip, auth via Apps Script. -->
@@ -1723,6 +1723,7 @@ function renderProjects() {
     return '<button class="proj-btn" data-pid="' + p.id + '" onclick="selectProject(\'' + p.id + '\')" disabled>' + p.name + '</button>';
   }).join("");
   opInp.addEventListener("input", refreshBtns);
+  refreshBtns(); // v5.9.7: habilita btns imediatamente se opInp ja tem valor (fix fetchCidades async)
 }
 
 function selectProject(id) {
