@@ -9,7 +9,7 @@
 <meta name="theme-color" content="#0a0e1a">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
-<title>Campo GEO v5.9.7</title>
+<title>Campo GEO v5.9.8</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <!-- v5.6: MULTI-KMZ — operador pode carregar vários KMZ/KML no mesmo mapa (append). FAB abre seletor múltiplo; KMZ central admin preserva KMZs locais adicionais. Mantém v5.4: geo-fence não bloqueante; v5.1: exifr, JSZip, auth via Apps Script. -->
@@ -926,9 +926,11 @@ async function onKMZSelected(ev) {
     if (!files || files.length === 0) { ev.target.value = ""; return; }
     // v5.8: captura bytes ANTES de limpar input (auto-publish admin)
     var isAdm = S.authUser && String(S.authUser.cargo || "").toLowerCase() === "admin";
-    var lastB64 = null;
+    var allB64 = []; // v5.9.8: coleta TODOS os KMZ
     if (isAdm && S.project) {
-        try { var buf = await files[files.length - 1].arrayBuffer(); lastB64 = arrayBufferToBase64(buf); } catch(e) {}
+        for (var ai = 0; ai < files.length; ai++) {
+            try { var bufAi = await files[ai].arrayBuffer(); allB64.push(arrayBufferToBase64(bufAi)); } catch(e) {}
+        }
     }
     // Processa em serie (append=true acumula no mapa). So ajusta viewport no ultimo.
     log("\ud83d\udce5 Carregando " + files.length + " arquivo(s) KMZ/KML...", "info");
@@ -937,11 +939,12 @@ async function onKMZSelected(ev) {
         await loadKMZFile(files[i], { append: true, sourceName: files[i].name, fitBounds: isLast });
     }
     ev.target.value = "";
-    // v5.8: Admin auto-publica KMZ no backend p/ todos operadores receberem
-    if (isAdm && lastB64 && S.project) {
+    // v5.9.8: Admin auto-publica TODOS os KMZ
+    if (isAdm && allB64.length > 0 && S.project) {
         try {
-            var res = await apiPost({ action: "saveKMZ", project: S.project.folder, content: lastB64 });
-            if (res && res.success) log("\ud83d\udce4 KMZ auto-publicado \u2014 operadores receberao ao abrir o projeto", "ok");
+            var payload = allB64.length === 1 ? allB64[0] : JSON.stringify(allB64);
+            var res = await apiPost({ action: "saveKMZ", project: S.project.folder, content: payload });
+            if (res && res.success) log("\ud83d\udce4 " + allB64.length + " KMZ publicado(s) \u2014 operadores receberao ao abrir o projeto", "ok");
             else log("\u26a0\ufe0f Auto-publish KMZ falhou: " + ((res&&res.error)||"?"), "err");
         } catch(e) { log("\u26a0\ufe0f Auto-publish KMZ falhou: " + e.message, "err"); }
     }
@@ -970,6 +973,20 @@ function base64ToBlob(b64, type) {
 // Fetch remoto — chamado em startApp se usuário comum, ou manualmente pelo admin
 // v5.6: não substitui mais TUDO. Remove apenas a source anterior "Admin central"
 // e re-adiciona a versão fresca, preservando KMZs locais adicionais do operador.
+function removeAllAdminKMZSources() {
+  var found = true;
+  while (found) {
+    found = false;
+    if (!Array.isArray(S.kmzSources)) break;
+    for (var i = 0; i < S.kmzSources.length; i++) {
+      if (S.kmzSources[i].name && S.kmzSources[i].name.indexOf(KMZ_ADMIN_SOURCE_NAME) === 0) {
+        removeKMZSourceByName(S.kmzSources[i].name);
+        found = true; break;
+      }
+    }
+  }
+}
+
 var KMZ_ADMIN_SOURCE_NAME = "Admin central (remoto)";
 
 async function fetchRemoteKMZ(retryCount) {
@@ -990,13 +1007,19 @@ async function fetchRemoteKMZ(retryCount) {
             }
             return false;
         }
-        var blob = base64ToBlob(res.content, "application/vnd.google-earth.kmz");
-        var fakeFile = new File([blob], "area_atuacao.kmz", { type: "application/vnd.google-earth.kmz" });
-        removeKMZSourceByName(KMZ_ADMIN_SOURCE_NAME);
-        await loadKMZFile(fakeFile, { append: true, sourceName: KMZ_ADMIN_SOURCE_NAME, fitBounds: true });
+        var contents = [];
+        try { var parsed = JSON.parse(res.content); contents = Array.isArray(parsed) ? parsed : [res.content]; }
+        catch(e) { contents = [res.content]; }
+        removeAllAdminKMZSources();
+        for (var ci = 0; ci < contents.length; ci++) {
+            var blobCi = base64ToBlob(contents[ci], "application/vnd.google-earth.kmz");
+            var srcName = KMZ_ADMIN_SOURCE_NAME + (contents.length > 1 ? " (" + (ci+1) + "/" + contents.length + ")" : "");
+            var fakeFileCi = new File([blobCi], "area_atuacao_" + ci + ".kmz", { type: "application/vnd.google-earth.kmz" });
+            await loadKMZFile(fakeFileCi, { append: true, sourceName: srcName, fitBounds: ci === contents.length - 1 });
+        }
         var who = (res.meta && res.meta.uploadedBy) || "?";
         var when = (res.meta && res.meta.uploadedAt) || "?";
-        log("\u2705 KMZ remoto carregado! Publicado por " + who + " em " + when, "ok");
+        log("\u2705 " + contents.length + " KMZ remoto(s) carregado(s)! Publicado por " + who + " em " + when, "ok");
         return true;
     } catch (e) {
         log("\u26a0\ufe0f Falha ao baixar KMZ remoto: " + e.message, "err");
