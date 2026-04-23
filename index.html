@@ -9,7 +9,7 @@
 <meta name="theme-color" content="#0a0e1a">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
-<title>Campo GEO v5.9.8</title>
+<title>Campo GEO v5.9.9</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <!-- v5.6: MULTI-KMZ — operador pode carregar vários KMZ/KML no mesmo mapa (append). FAB abre seletor múltiplo; KMZ central admin preserva KMZs locais adicionais. Mantém v5.4: geo-fence não bloqueante; v5.1: exifr, JSZip, auth via Apps Script. -->
@@ -939,13 +939,27 @@ async function onKMZSelected(ev) {
         await loadKMZFile(files[i], { append: true, sourceName: files[i].name, fitBounds: isLast });
     }
     ev.target.value = "";
-    // v5.9.8: Admin auto-publica TODOS os KMZ
+    // v5.9.9: Admin auto-publica com APPEND — KMZ anteriores sao preservados
     if (isAdm && allB64.length > 0 && S.project) {
         try {
-            var payload = allB64.length === 1 ? allB64[0] : JSON.stringify(allB64);
+            // Busca KMZs ja existentes no backend para acumular
+            var existingB64 = [];
+            try {
+                var existRes = await apiPost({ action: "getKMZ", project: S.project.folder });
+                if (existRes && existRes.success && existRes.content) {
+                    try { var ep = JSON.parse(existRes.content); existingB64 = Array.isArray(ep) ? ep : [existRes.content]; }
+                    catch(e2) { existingB64 = [existRes.content]; }
+                }
+            } catch(e3) { /* sem KMZ previo */ }
+            // Mescla: existentes + novos
+            var merged = existingB64.concat(allB64);
+            var payload = merged.length === 1 ? merged[0] : JSON.stringify(merged);
             var res = await apiPost({ action: "saveKMZ", project: S.project.folder, content: payload });
-            if (res && res.success) log("\ud83d\udce4 " + allB64.length + " KMZ publicado(s) \u2014 operadores receberao ao abrir o projeto", "ok");
-            else log("\u26a0\ufe0f Auto-publish KMZ falhou: " + ((res&&res.error)||"?"), "err");
+            if (res && res.success) {
+                var msg = "\ud83d\udce4 " + merged.length + " KMZ(s) publicado(s)";
+                if (existingB64.length > 0) msg += " (" + existingB64.length + " anteriores + " + allB64.length + " novo(s))";
+                log(msg + " \u2014 operadores receberao ao sincronizar", "ok");
+            } else log("\u26a0\ufe0f Auto-publish KMZ falhou: " + ((res&&res.error)||"?"), "err");
         } catch(e) { log("\u26a0\ufe0f Auto-publish KMZ falhou: " + e.message, "err"); }
     }
 }
