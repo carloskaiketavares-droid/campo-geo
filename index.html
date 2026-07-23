@@ -637,12 +637,21 @@ async function geocode(lat, lng) {
     var r2 = await fetch("https://nominatim.openstreetmap.org/reverse?format=json&lat=" + lat + "&lon=" + lng + "&accept-language=pt-BR");
     var d2 = await r2.json();
     var a = d2.address || {};
-    return { bairro: a.suburb || a.neighbourhood || a.quarter || "Sem_bairro", rua: a.road || a.pedestrian || "Sem_rua", cidade: a.city || a.town || "", uf: a.state_code || (a.state ? a.state.substring(0,2).toUpperCase() : ""), cep: a.postcode || "", fmt: d2.display_name || "" };
+    return { bairro: a.suburb || a.neighbourhood || a.quarter || "Sem_bairro", rua: a.road || a.pedestrian || "Sem_rua", cidade: a.city || a.town || "", uf: ufSiglaBR(a), cep: a.postcode || "", fmt: d2.display_name || "" };
   } catch(e) {
     return { bairro: "Erro_geo", rua: "Erro_geo", cidade: "", uf: "", cep: "", fmt: "" };
   }
 }
 
+function ufSiglaBR(a){
+  var iso = a["ISO3166-2-lvl4"] || "";
+  if (/^BR-[A-Z]{2}$/.test(iso)) return iso.slice(3);
+  var M = {"acre":"AC","alagoas":"AL","amapa":"AP","amazonas":"AM","bahia":"BA","ceara":"CE","distrito federal":"DF","espirito santo":"ES","goias":"GO","maranhao":"MA","mato grosso":"MT","mato grosso do sul":"MS","minas gerais":"MG","para":"PA","paraiba":"PB","parana":"PR","pernambuco":"PE","piaui":"PI","rio de janeiro":"RJ","rio grande do norte":"RN","rio grande do sul":"RS","rondonia":"RO","roraima":"RR","santa catarina":"SC","sao paulo":"SP","sergipe":"SE","tocantins":"TO"};
+  var s = (a.state || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").trim();
+  if (M[s]) return M[s];
+  if (a.state_code) return String(a.state_code).toUpperCase();
+  return a.state ? a.state.substring(0,2).toUpperCase() : "";
+}
 // ── MAPA ─────────────────────────────────────
 function initMap() {
   S.map = L.map("map", { zoomControl: true, attributionControl: false }).setView([-22.5, -42.0], 12);
